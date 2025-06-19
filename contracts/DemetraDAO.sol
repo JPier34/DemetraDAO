@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.28;
 
 import "./DemetraToken.sol";
 import "./ProposalManager.sol";
@@ -12,7 +12,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title DemetraDAO
- * @dev Contratto principale della DAO Demetra per calzature sostenibili
+ * @dev Contratto principale della DAO Demetra
  * Orchestratore di tutti i componenti del sistema di governance
  */
 contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
