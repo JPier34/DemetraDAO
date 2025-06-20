@@ -30,7 +30,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     // Configurazione vendita token
     bool public tokenSaleActive;
     uint256 public tokenPrice; // Prezzo in wei per token
-    uint256 public constant MIN_PURCHASE = 1 ether; // Minimo 1 token
+    uint256 public constant MIN_PURCHASE = 1 ether; // Minimo 0.1 token
     uint256 public constant MAX_PURCHASE = 10000 ether; // Massimo 10,000 token per transazione
     uint256 public maxTotalSupply; // Supply massima dei token
     
