@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+
 /**
  * @title DemetraDAO
  * @dev Contratto principale della DAO Demetra
@@ -223,20 +224,28 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
      * @param proposalId ID della proposta
      * @param choice Scelta del voto
      */
+
+
     function vote(
-        uint256 proposalId,
-        ProposalManager.VoteChoice choice
-    ) external nonReentrant whenNotPaused {
-        require(members[msg.sender].isActive, "DemetraDAO: only members can vote");
-        require(!proposalManager.hasVoted(proposalId, msg.sender), "DemetraDAO: already voted");
-        
-        // Delega il voto al contratto VotingStrategies
-        votingStrategies.vote(proposalId, choice);
-        
-        // Aggiorna statistiche
-        members[msg.sender].votesParticipated++;
-        totalVotesCast++;
-    }
+    uint256 proposalId,
+    ProposalManager.VoteChoice choice
+) external nonReentrant whenNotPaused {
+    require(members[msg.sender].isActive, "DemetraDAO: only members can vote");
+    require(!proposalManager.hasVoted(proposalId, msg.sender), "DemetraDAO: already voted");
+
+    // Calcola il potere di voto usando balanceOf
+    uint256 votingPower = demetraToken.balanceOf(msg.sender);
+    require(votingPower > 0, "DemetraDAO: no voting power");
+
+    // Passa voto + peso alla strategia
+    votingStrategies.vote(proposalId, choice);
+
+    // Aggiorna statistiche
+    members[msg.sender].votesParticipated++;
+    totalVotesCast++;
+}
+
+
     
     /**
      * @dev Finalizza una proposta

@@ -182,22 +182,20 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
      * @param choice Scelta del voto
      */
     function vote(
-        uint256 proposalId,
-        ProposalManager.VoteChoice choice
-    ) external nonReentrant {
-        require(demetraToken.balanceOf(msg.sender) > 0, "VotingStrategies: no voting power");
-        
-        // Ottieni informazioni sulla proposta
-        (,,,,,, ProposalManager.VotingStrategy strategy,) = proposalManager.getProposal(proposalId);
-        
-        uint256 votingPower = _calculateVotingPower(msg.sender, proposalId, strategy);
-        require(votingPower > 0, "VotingStrategies: no voting power available");
-        
-        // Invia il voto al ProposalManager
-        proposalManager.castVote(proposalId, msg.sender, choice, votingPower);
-        
-        emit VoteCastWithStrategy(proposalId, msg.sender, choice, votingPower, strategy);
-    }
+    uint256 proposalId,
+    ProposalManager.VoteChoice choice
+) external nonReentrant {
+    uint256 votingPower = demetraToken.balanceOf(msg.sender);
+    require(votingPower > 0, "VotingStrategies: no voting power");
+
+    (,,,,,, ProposalManager.VotingStrategy strategy,) = proposalManager.getProposal(proposalId);
+    
+    // Se vuoi, puoi calcolare in base a strategy (per ora è solo saldo)
+    proposalManager.castVote(proposalId, msg.sender, choice, votingPower);
+
+    emit VoteCastWithStrategy(proposalId, msg.sender, choice, votingPower, strategy);
+}
+
     
     /**
      * @dev Calcola il potere di voto per un utente su una proposta specifica
