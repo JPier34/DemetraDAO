@@ -127,7 +127,6 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         address delegatee
     ) external {
         require(delegatee != address(0), "VotingStrategies: cannot delegate to zero address");
-        require(delegatee != msg.sender, "VotingStrategies: cannot delegate to self");
         
         address currentDelegate = categoryDelegations[msg.sender][category].delegate;
         

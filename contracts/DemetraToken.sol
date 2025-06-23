@@ -82,7 +82,6 @@ contract DemetraToken is ERC20, ERC20Snapshot, AccessControl, ReentrancyGuard {
      */
     function delegate(address delegatee) public {
         require(delegatee != address(0), "DemetraToken: delegate to zero address");
-        require(delegatee != msg.sender, "DemetraToken: cannot delegate to self");
         
         address currentDelegate = delegations[msg.sender].delegate;
         

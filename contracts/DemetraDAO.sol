@@ -30,8 +30,8 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     // Configurazione vendita token
     bool public tokenSaleActive;
     uint256 public tokenPrice; // Prezzo in wei per token
-    uint256 public constant MIN_PURCHASE = 1 ether; // Minimo 1 token
-    uint256 public constant MAX_PURCHASE = 10000 ether; // Massimo 10,000 token per transazione
+    uint256 public constant MIN_PURCHASE = 1; // Minimo 1 token
+    uint256 public constant MAX_PURCHASE = 10000; // Massimo 10,000 token per transazione
     uint256 public maxTotalSupply; // Supply massima dei token
     
     // Membri della DAO
@@ -114,11 +114,13 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
      */
     function purchaseTokens() external payable nonReentrant whenNotPaused {
         require(tokenSaleActive, "DemetraDAO: token sale not active");
-        require(msg.value >= MIN_PURCHASE, "DemetraDAO: purchase below minimum");
-        require(msg.value <= MAX_PURCHASE, "DemetraDAO: purchase above maximum");
-        
+       
         uint256 tokensToMint = msg.value / tokenPrice;
+
+        require(tokensToMint >= MIN_PURCHASE, "DemetraDAO: purchase below minimum");
+        require(tokensToMint <= MAX_PURCHASE, "DemetraDAO: purchase above maximum");
         require(tokensToMint > 0, "DemetraDAO: insufficient payment for tokens");
+        require(msg.value % tokenPrice == 0, "DemetraDAO: send a multiple of token price");
         
         uint256 newTotalSupply = demetraToken.totalSupply() + tokensToMint;
         require(newTotalSupply <= maxTotalSupply, "DemetraDAO: would exceed max supply");
@@ -166,6 +168,11 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
      * @param category Categoria per democrazia liquida
      * @param actions Array di azioni da eseguire (opzionale)
      */
+
+    /**  
+    * @dev Variabile per il numero minimo di token necessari per proporre
+    */
+     
     function createProposal(
         string memory title,
         string memory description,
@@ -173,8 +180,9 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         VotingStrategies.ProposalCategory category,
         ProposalManager.ProposalAction[] memory actions
     ) external nonReentrant whenNotPaused returns (uint256) {
+
         require(members[msg.sender].isActive, "DemetraDAO: only members can create proposals");
-        require(demetraToken.balanceOf(msg.sender) >= 100 ether, "DemetraDAO: insufficient tokens to propose");
+        require(demetraToken.balanceOf(msg.sender) >= 100, "DemetraDAO: insufficient tokens to propose");
         
         // Ottieni parametri suggeriti per la strategia
         (uint256 quorum, uint256 threshold, uint256 votingPeriod) = 
@@ -399,7 +407,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
      * @dev Calcola il costo per acquistare una quantità di token
      */
     function calculateTokenCost(uint256 tokenAmount) external view returns (uint256) {
-        return tokenAmount * tokenPrice;
+        return tokenAmount * tokenPrice / 1 ether;
     }
 
     /**

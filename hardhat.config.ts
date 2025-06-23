@@ -21,7 +21,7 @@ const config: HardhatUserConfig = {
       gasPrice: 1000000000, // 1 gwei
       accounts: {
         count: 20,
-        accountsBalance: "100000000000000000000000",
+        accountsBalance: "100000000000000000000000000000000000",
       },
     },
   }, // 100,000 ETH per account
