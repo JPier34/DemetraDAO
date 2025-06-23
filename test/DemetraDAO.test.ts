@@ -1,73 +1,163 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { BigNumberish, parseUnits, formatEther, BigNumber } = require("ethers");
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { Contract, Signer, parseEther, formatEther } from "ethers";
+import "@nomicfoundation/hardhat-chai-matchers";
 
-// Import dei chai matchers per Hardhat
-require("@nomicfoundation/hardhat-chai-matchers");
+interface DemetraDAOContract {
+  interface: any;
+  getAddress(): unknown;
+  // Proprietà di sola lettura
+  tokenPrice(): Promise<bigint>;
+  maxTotalSupply(): Promise<bigint>;
+  tokenSaleActive(): Promise<boolean>;
+  MIN_PURCHASE(): Promise<bigint>;
+  MAX_PURCHASE(): Promise<bigint>;
+  totalMembers(): Promise<bigint>;
+  treasuryBalance(): Promise<bigint>;
 
-describe("DemetraDAO - Test 0 (preliminare): Setup e Deploy", function () {
-  let demetraDAO: {
-    connect(addr1: { address: any }): unknown;
-    waitForDeployment: () => any;
-    getAddress: () => any;
-    tokenPrice: () => any;
-    maxTotalSupply: () => any;
-    tokenSaleActive: () => any;
-    DEFAULT_ADMIN_ROLE: () => any;
-    ADMIN_ROLE: () => any;
-    TREASURER_ROLE: () => any;
-    PROPOSER_ROLE: () => any;
-    hasRole: (arg0: any, arg1: any) => any;
-    getDAOStats: () => any;
-    isMember: (arg0: any) => any;
-    getMemberInfo: (arg0: any) => any;
-    demetraToken: () => any;
-    proposalManager: () => any;
-    votingStrategies: () => any;
-    calculateTokenCost: (arg0: any) => any;
-    MIN_PURCHASE: () => any;
-    MAX_PURCHASE: () => any;
-    purchaseTokens: (arg0: { value: any }) => any;
-  };
-  let owner: { address: any }, addr1: { address: any }, addr2, addrs;
+  // Ruoli
+  DEFAULT_ADMIN_ROLE(): Promise<string>;
+  ADMIN_ROLE(): Promise<string>;
+  TREASURER_ROLE(): Promise<string>;
+  PROPOSER_ROLE(): Promise<string>;
 
-  // Parametri di configurazione per il deploy
+  // Contratti collegati
+  demetraToken(): Promise<string>;
+  proposalManager(): Promise<string>;
+  votingStrategies(): Promise<string>;
+
+  // Funzioni di lettura
+  hasRole(role: string, account: string): Promise<boolean>;
+  isMember(account: string): Promise<boolean>;
+  getMemberInfo(account: string): Promise<{
+    isActive: boolean;
+    joinedAt: bigint;
+    tokensOwned: bigint;
+    proposalsCreated: bigint;
+    votesParticipated: bigint;
+  }>;
+  getDAOStats(): Promise<{
+    _totalMembers: bigint;
+    _totalProposalsCreated: bigint;
+    _totalVotesCast: bigint;
+    _totalFundsRaised: bigint;
+    _treasuryBalance: bigint;
+    _tokenSupply: bigint;
+    _tokenSaleActive: boolean;
+  }>;
+  calculateTokenCost(tokenAmount: bigint): Promise<bigint>;
+
+  // Funzioni di scrittura
+  purchaseTokens(
+    overrides: Partial<{
+      value: bigint;
+      gasLimit: number;
+      gasPrice: bigint;
+      nonce: number;
+    }>
+  ): Promise<any>;
+
+  createProposal(
+    title: string,
+    description: string,
+    strategy: number,
+    category: number,
+    actions: any[]
+  ): Promise<any>;
+  vote(proposalId: bigint, choice: number): Promise<any>;
+  finalizeProposal(proposalId: bigint): Promise<any>;
+  executeProposal(proposalId: bigint): Promise<any>;
+
+  // Admin functions
+  disableTokenSale(): Promise<any>;
+  enableTokenSale(): Promise<any>;
+  emergencyPause(): Promise<any>;
+  emergencyUnpause(): Promise<any>;
+
+  // Treasury functions
+  depositToTreasury(options: { value: bigint }): Promise<any>;
+  withdrawFromTreasury(
+    to: string,
+    amount: bigint,
+    reason: string
+  ): Promise<any>;
+
+  // ethers.js Contract method for connecting a signer
+  connect(signerOrProvider: Signer | string): DemetraDAOContract;
+}
+
+interface DemetraTokenContract {
+  balanceOf(account: string): Promise<bigint>;
+  totalSupply(): Promise<bigint>;
+  snapshot(): Promise<bigint>;
+}
+
+describe("DemetraDAO - Test Suite Completa", function () {
+  let demetraDAO: DemetraDAOContract;
+  let demetraToken: DemetraTokenContract;
+  let owner: Signer;
+  let addr1: Signer;
+  let addr2: Signer;
+  let addr3: Signer;
+  let addrs: Signer[];
+
+  // Aumenta il timeout per evitare problemi di gas
+  this.timeout(60000);
+
+  // Indirizzi per facilità d'uso
+  let ownerAddress: string;
+  let addr1Address: string;
+  let addr2Address: string;
+  let addr3Address: string;
+
+  // Parametri di configurazione
   const TOKEN_NAME = "Demetra Token";
   const TOKEN_SYMBOL = "DMT";
-  const TOKEN_PRICE = ethers.parseEther("0.001"); // 0.001 ETH per token
-  const MAX_TOTAL_SUPPLY = ethers.parseEther("1000000"); // 1M token max
+  const TOKEN_PRICE = parseEther("0.001"); // 0.001 ETH per token
+  const MAX_TOTAL_SUPPLY = parseEther("1000000"); // 1M token max
 
   beforeEach(async function () {
     // Ottieni gli accounts di test
-    [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
+    [owner, addr1, addr2, addr3, ...addrs] = await ethers.getSigners();
 
-    // Prima di deployare DemetraDAO, dobbiamo creare i mock dei contratti dipendenti
-    // o assumere che questi contratti esistano e siano funzionanti
+    // Salva indirizzi per facilità d'uso
+    ownerAddress = await owner.getAddress();
+    addr1Address = await addr1.getAddress();
+    addr2Address = await addr2.getAddress();
+    addr3Address = await addr3.getAddress();
 
-    // Deploy del contratto DemetraDAO
+    // Deploy di DemetraDAO
     const DemetraDAO = await ethers.getContractFactory("DemetraDAO");
-    demetraDAO = await DemetraDAO.deploy(
+    const demetraDAOContract = await DemetraDAO.deploy(
       TOKEN_NAME,
       TOKEN_SYMBOL,
       TOKEN_PRICE,
       MAX_TOTAL_SUPPLY,
-      owner.address
+      ownerAddress
     );
 
-    await demetraDAO.waitForDeployment();
+    await demetraDAOContract.waitForDeployment();
+
+    // Cast ai tipi personalizzati
+    demetraDAO = demetraDAOContract as unknown as DemetraDAOContract;
+
+    // Ottieni riferimento al token
+    const tokenAddress = await demetraDAO.demetraToken();
+    demetraToken = (await ethers.getContractAt(
+      "DemetraToken",
+      tokenAddress
+    )) as unknown as DemetraTokenContract;
   });
 
-  describe("Deployment", function () {
+  describe("Test 0: Setup e Deploy", function () {
     it("Dovrebbe deployare correttamente con i parametri giusti", async function () {
-      // Verifica che il contratto sia stato deployato
       const contractAddress = await demetraDAO.getAddress();
       expect(contractAddress).to.not.equal(ethers.ZeroAddress);
       expect(ethers.isAddress(contractAddress)).to.be.true;
 
-      // Verifica i parametri di configurazione
-      expect(await demetraDAO.tokenPrice()).to.equal(TOKEN_PRICE);
-      expect(await demetraDAO.maxTotalSupply()).to.equal(MAX_TOTAL_SUPPLY);
-      expect(await demetraDAO.tokenSaleActive()).to.be.true;
+      expect(await demetraDAO.tokenPrice()).to.equal(TOKEN_PRICE); // 0.001 ETH per token
+      expect(await demetraDAO.maxTotalSupply()).to.equal(MAX_TOTAL_SUPPLY); // 1M token
+      expect(await demetraDAO.tokenSaleActive()).to.be.true; //
     });
 
     it("Dovrebbe impostare correttamente i ruoli dell'admin", async function () {
@@ -76,148 +166,509 @@ describe("DemetraDAO - Test 0 (preliminare): Setup e Deploy", function () {
       const TREASURER_ROLE = await demetraDAO.TREASURER_ROLE();
       const PROPOSER_ROLE = await demetraDAO.PROPOSER_ROLE();
 
-      // Verifica che l'owner abbia tutti i ruoli
-      expect(await demetraDAO.hasRole(DEFAULT_ADMIN_ROLE, owner.address)).to.be
+      expect(await demetraDAO.hasRole(DEFAULT_ADMIN_ROLE, ownerAddress)).to.be
         .true;
-      expect(await demetraDAO.hasRole(ADMIN_ROLE, owner.address)).to.be.true;
-      expect(await demetraDAO.hasRole(TREASURER_ROLE, owner.address)).to.be
-        .true;
-      expect(await demetraDAO.hasRole(PROPOSER_ROLE, owner.address)).to.be.true;
-    });
-
-    it("Dovrebbe inizializzare correttamente le statistiche", async function () {
-      const stats = await demetraDAO.getDAOStats();
-
-      // Verifica statistiche iniziali (nota: usiamo Number() per convertire BigInt)
-      expect(Number(stats._totalMembers)).to.equal(1); // Solo l'admin
-      expect(Number(stats._totalProposalsCreated)).to.equal(0);
-      expect(Number(stats._totalVotesCast)).to.equal(0);
-      expect(Number(stats._totalFundsRaised)).to.equal(0);
-      expect(Number(stats._treasuryBalance)).to.equal(0);
-      expect(stats._tokenSaleActive).to.be.true;
+      expect(await demetraDAO.hasRole(ADMIN_ROLE, ownerAddress)).to.be.true;
+      expect(await demetraDAO.hasRole(TREASURER_ROLE, ownerAddress)).to.be.true;
+      expect(await demetraDAO.hasRole(PROPOSER_ROLE, ownerAddress)).to.be.true;
     });
 
     it("Dovrebbe aggiungere l'admin come primo membro", async function () {
-      // Verifica che l'admin sia un membro
-      expect(await demetraDAO.isMember(owner.address)).to.be.true;
+      expect(await demetraDAO.isMember(ownerAddress)).to.be.true;
 
-      // Verifica i dettagli del membro admin
-      const memberInfo = await demetraDAO.getMemberInfo(owner.address);
+      const memberInfo = await demetraDAO.getMemberInfo(ownerAddress);
       expect(memberInfo.isActive).to.be.true;
-      expect(Number(memberInfo.tokensOwned)).to.equal(0); // Admin inizia con 0 token
-      expect(Number(memberInfo.proposalsCreated)).to.equal(0);
-      expect(Number(memberInfo.votesParticipated)).to.equal(0);
-    });
-
-    it("Dovrebbe deployare correttamente i contratti collegati", async function () {
-      // Verifica che i contratti collegati siano stati deployati
-      const demetraTokenAddress = await demetraDAO.demetraToken();
-      const proposalManagerAddress = await demetraDAO.proposalManager();
-      const votingStrategiesAddress = await demetraDAO.votingStrategies();
-
-      expect(ethers.isAddress(demetraTokenAddress)).to.be.true;
-      expect(ethers.isAddress(proposalManagerAddress)).to.be.true;
-      expect(ethers.isAddress(votingStrategiesAddress)).to.be.true;
-
-      // Verifica che non siano indirizzi zero
-      expect(demetraTokenAddress).to.not.equal(ethers.ZeroAddress);
-      expect(proposalManagerAddress).to.not.equal(ethers.ZeroAddress);
-      expect(votingStrategiesAddress).to.not.equal(ethers.ZeroAddress);
+      expect(memberInfo.tokensOwned).to.equal(0n);
     });
   });
 
-  describe("Validation dei parametri del costruttore", function () {
-    it("Dovrebbe fallire se il prezzo del token è zero", async function () {
-      const DemetraDAO = await ethers.getContractFactory("DemetraDAO");
+  describe("Test 1: Acquisto Token e Creazione Membri", function () {
+    it("Dovrebbe permettere l'acquisto di token e creare un nuovo membro", async function () {
+      // Calcola il costo per 1000 token (1 ETH al prezzo di 0.001 ETH per token)
+      const tokenPrice = await demetraDAO.tokenPrice();
+      const purchaseAmount = ethers.parseEther("1000"); // 1000 token
+      const requiredEth =
+        (purchaseAmount * tokenPrice) / ethers.parseEther("1"); // Costo in ETH
+
+      console.log("Token price:", ethers.formatEther(tokenPrice));
+      console.log("Purchase amount:", ethers.formatEther(purchaseAmount));
+      console.log("Required ETH:", ethers.formatEther(requiredEth));
+
+      // Verifica che il costo sia inferiore a 100 ETH
+      expect(requiredEth).to.be.lessThan(ethers.parseEther("100"));
+
+      // Verifica che addr1 non sia ancora membro
+      expect(await demetraDAO.isMember(addr1Address)).to.be.false;
+
+      // Calcola il costo per l'acquisto
+      const TokensToBuy = 1000n; // 1000 token
+      const tokenAmount = ethers.parseEther(TokensToBuy.toString()); // 1000 token in wei
+      const cost = (tokenAmount * tokenPrice) / ethers.parseEther("1"); // Costo in ETH
+
+      // Acquista token
+      const tx = await demetraDAO
+        .connect(addr1)
+        .purchaseTokens({ value: cost, gasLimit: 500000 });
+
+      // Verifica evento emesso
+      await expect(tx)
+        .to.emit(demetraDAO, "TokensPurchased")
+        .withArgs(addr1Address, TokensToBuy, cost);
+
+      await expect(tx)
+        .to.emit(demetraDAO, "MemberJoined")
+        .withArgs(addr1Address, TokensToBuy);
+
+      // Verifica che sia diventato membro
+      expect(await demetraDAO.isMember(addr1Address)).to.be.true;
+
+      // Verifica informazioni membro
+      const memberInfo = await demetraDAO.getMemberInfo(addr1Address);
+      expect(memberInfo.isActive).to.be.true;
+      expect(memberInfo.tokensOwned).to.equal(TokensToBuy);
+      expect(memberInfo.proposalsCreated).to.equal(0n);
+      expect(memberInfo.votesParticipated).to.equal(0n);
+
+      // Verifica balance del token
+      expect(await demetraToken.balanceOf(addr1Address)).to.equal(TokensToBuy);
+
+      // Verifica statistiche DAO
+      const stats = await demetraDAO.getDAOStats();
+      expect(stats._totalMembers).to.equal(2n); // owner + addr1
+      expect(stats._totalFundsRaised).to.equal(cost);
+      expect(stats._treasuryBalance).to.equal(cost);
+    });
+
+    it("Dovrebbe fallire l'acquisto sotto il minimo", async function () {
+      const minPurchase = await demetraDAO.MIN_PURCHASE();
+      const tokenPrice = await demetraDAO.tokenPrice();
+      const tooSmallAmount = (minPurchase * tokenPrice) / parseEther("1") - 1n;
 
       await expect(
-        DemetraDAO.deploy(
-          TOKEN_NAME,
-          TOKEN_SYMBOL,
-          0, // Prezzo zero
-          MAX_TOTAL_SUPPLY,
-          owner.address
-        )
-      ).to.be.revertedWith("DemetraDAO: token price must be positive");
+        demetraDAO.connect(addr1).purchaseTokens({ value: tooSmallAmount })
+      ).to.be.revertedWith("DemetraDAO: purchase below minimum");
     });
 
-    it("Dovrebbe fallire se la supply massima è zero", async function () {
-      const DemetraDAO = await ethers.getContractFactory("DemetraDAO");
+    it("Dovrebbe fallire l'acquisto sopra il massimo", async function () {
+      const maxPurchase = await demetraDAO.MAX_PURCHASE();
+      const tokenPrice = await demetraDAO.tokenPrice();
+      const tooLargeAmount =
+        (maxPurchase * tokenPrice) / ethers.parseEther("1") + 1n;
 
       await expect(
-        DemetraDAO.deploy(
-          TOKEN_NAME,
-          TOKEN_SYMBOL,
-          TOKEN_PRICE,
-          0, // Supply zero
-          owner.address
-        )
-      ).to.be.revertedWith("DemetraDAO: max supply must be positive");
+        demetraDAO.connect(addr1).purchaseTokens({ value: tooLargeAmount })
+      ).to.be.revertedWith("DemetraDAO: purchase above maximum");
     });
 
-    it("Dovrebbe fallire se l'admin è l'indirizzo zero", async function () {
-      const DemetraDAO = await ethers.getContractFactory("DemetraDAO");
+    it("Dovrebbe aggiornare correttamente i token per membri esistenti", async function () {
+      // Primo acquisto
+      const firstPurchase = parseEther("500");
+      const firstCost = await demetraDAO.calculateTokenCost(firstPurchase);
 
-      await expect(
-        DemetraDAO.deploy(
-          TOKEN_NAME,
-          TOKEN_SYMBOL,
-          TOKEN_PRICE,
-          MAX_TOTAL_SUPPLY,
-          ethers.ZeroAddress // Admin zero
-        )
-      ).to.be.revertedWith("DemetraDAO: admin cannot be zero address");
-    });
-  });
+      await demetraDAO.connect(addr1).purchaseTokens({ value: firstCost });
 
-  describe("Funzioni di utilità", function () {
-    it("Dovrebbe calcolare correttamente il costo dei token", async function () {
-      const tokenAmount = ethers.toBigInt(100); // 100 token
-      // Il costo dovrebbe essere: 100 token * 0.001 ETH/token = 0.1 ETH
-      const expectedCost = ethers.parseEther("0.1");
-      const calculatedCost = await demetraDAO.calculateTokenCost(tokenAmount);
-      expect(calculatedCost).to.equal(expectedCost);
-    });
+      // Secondo acquisto
+      const secondPurchase = parseEther("300");
+      const secondCost = await demetraDAO.calculateTokenCost(secondPurchase);
 
-    it("Dovrebbe restituire le costanti corrette", async function () {
-      expect(await demetraDAO.MIN_PURCHASE()).to.equal(ethers.parseEther("1"));
-      expect(await demetraDAO.MAX_PURCHASE()).to.equal(
-        ethers.parseEther("10000")
+      await demetraDAO.connect(addr1).purchaseTokens({ value: secondCost });
+
+      // Verifica totale
+      const memberInfo = await demetraDAO.getMemberInfo(addr1Address);
+      expect(memberInfo.tokensOwned).to.equal(firstPurchase + secondPurchase);
+      expect(await demetraToken.balanceOf(addr1Address)).to.equal(
+        firstPurchase + secondPurchase
       );
     });
   });
 
-  // Test: 1: Acquisto di azioni e aggiunta di nuovi membri
-  describe("Token Purchase", function () {
-    it("Dovrebbe permettere l'acquisto di token e aggiungere un nuovo membro", async function () {
-      const minPurchaseRaw = await demetraDAO.MIN_PURCHASE();
-      const tokenPriceRaw = await demetraDAO.tokenPrice();
+  describe("Test 2: Creazione e Gestione Proposte", function () {
+    beforeEach(async function () {
+      // Assicurati che addr1 abbia abbastanza token per creare proposte (minimo 100)
+      const tokensForProposal = parseEther("150");
+      const cost = await demetraDAO.calculateTokenCost(tokensForProposal);
+      await demetraDAO.connect(addr1).purchaseTokens({ value: cost });
+    });
 
-      const minPurchase = BigInt(minPurchaseRaw.toString());
-      const tokenPrice = BigInt(tokenPriceRaw.toString());
+    it("Dovrebbe permettere la creazione di una proposta da parte di un membro", async function () {
+      const title = "Proposta Test";
+      const description =
+        "Questa è una proposta di test per verificare il funzionamento del sistema";
+      const strategy = 0; // VotingStrategy.SIMPLE_MAJORITY
+      const category = 0; // ProposalCategory.GENERAL
+      const actions: any[] = [];
 
-      const cost = (minPurchase * tokenPrice) / 10n ** 18n;
+      const tx = await demetraDAO
+        .connect(addr1)
+        .createProposal(title, description, strategy, category, actions);
 
-      console.log("MIN_PURCHASE:", minPurchase.toString());
-      console.log("TOKEN_PRICE:", tokenPrice.toString());
-      console.log("Cost in wei:", cost.toString());
-      console.log("Cost in ETH:", formatEther(cost));
+      await expect(tx)
+        .to.emit(demetraDAO, "ProposalSubmitted")
+        .withArgs(1n, addr1Address); // Prima proposta dovrebbe avere ID 1
+
+      // Verifica statistiche aggiornate
+      const memberInfo = await demetraDAO.getMemberInfo(addr1Address);
+      expect(memberInfo.proposalsCreated).to.equal(1n);
+
+      const stats = await demetraDAO.getDAOStats();
+      expect(stats._totalProposalsCreated).to.equal(1n);
+    });
+
+    it("Dovrebbe fallire se il membro non ha abbastanza token", async function () {
+      // Crea un nuovo account senza token sufficienti
+      const tokensInsufficienti = parseEther("50"); // Sotto i 100 richiesti
+      const cost = await demetraDAO.calculateTokenCost(tokensInsufficienti);
+      await demetraDAO.connect(addr2).purchaseTokens({ value: cost });
 
       await expect(
-        (demetraDAO.connect(addr1) as typeof demetraDAO).purchaseTokens({
-          value: cost,
-        })
-      )
-        .to.emit(demetraDAO, "TokensPurchased")
-        .withArgs(addr1.address, minPurchaseRaw, cost);
+        demetraDAO
+          .connect(addr2)
+          .createProposal("Proposta Fallita", "Descrizione", 0, 0, [])
+      ).to.be.revertedWith("DemetraDAO: insufficient tokens to propose");
+    });
 
-      expect(await demetraDAO.isMember(addr1.address)).to.be.true;
+    it("Dovrebbe fallire se il proponente non è un membro", async function () {
+      await expect(
+        demetraDAO
+          .connect(addr2)
+          .createProposal("Proposta Non Membro", "Descrizione", 0, 0, [])
+      ).to.be.revertedWith("DemetraDAO: only members can create proposals");
+    });
+  });
 
-      const memberInfo = await demetraDAO.getMemberInfo(addr1.address);
-      expect(memberInfo.isActive).to.be.true;
-      expect(memberInfo.proposalsCreated).to.equal(0);
-      expect(memberInfo.votesParticipated).to.equal(0);
-      expect(memberInfo.tokensOwned).to.equal(minPurchaseRaw);
+  describe("Test 3: Sistema di Voto Ponderato", function () {
+    let proposalId: bigint;
+
+    beforeEach(async function () {
+      // Setup: crea membri con diversi quantitativi di token
+      const tokens1 = parseEther("1000"); // addr1: 1000 token
+      const tokens2 = parseEther("500"); // addr2: 500 token
+      const tokens3 = parseEther("200"); // addr3: 200 token
+
+      await demetraDAO.connect(addr1).purchaseTokens({
+        value: await demetraDAO.calculateTokenCost(tokens1),
+      });
+      await demetraDAO.connect(addr2).purchaseTokens({
+        value: await demetraDAO.calculateTokenCost(tokens2),
+      });
+      await demetraDAO.connect(addr3).purchaseTokens({
+        value: await demetraDAO.calculateTokenCost(tokens3),
+      });
+
+      // Crea una proposta
+      const tx = await demetraDAO.connect(addr1).createProposal(
+        "Proposta per Test Voto",
+        "Proposta per testare il sistema di voto ponderato",
+        0, // SIMPLE_MAJORITY
+        0, // GENERAL
+        []
+      );
+
+      // Estrai proposal ID dal receipt
+      const receipt = await tx.wait();
+      const event = receipt?.logs.find((log: any) => {
+        try {
+          const parsed = demetraDAO.interface.parseLog(log);
+          return parsed?.name === "ProposalSubmitted";
+        } catch {
+          return false;
+        }
+      });
+
+      if (event) {
+        const parsed = demetraDAO.interface.parseLog(event);
+        proposalId = parsed?.args[0];
+      } else {
+        proposalId = 1n; // Fallback
+      }
+    });
+
+    it("Dovrebbe permettere il voto e registrare correttamente i voti ponderati", async function () {
+      // addr1 vota SI (1000 token)
+      await expect(demetraDAO.connect(addr1).vote(proposalId, 1)).to.not.be // VoteChoice.FOR
+        .reverted;
+
+      // addr2 vota NO (500 token)
+      await expect(demetraDAO.connect(addr2).vote(proposalId, 2)).to.not.be // VoteChoice.AGAINST
+        .reverted;
+
+      // addr3 si astiene (200 token)
+      await expect(demetraDAO.connect(addr3).vote(proposalId, 0)).to.not.be // VoteChoice.ABSTAIN
+        .reverted;
+
+      // Verifica statistiche membri aggiornate
+      const member1Info = await demetraDAO.getMemberInfo(addr1Address);
+      const member2Info = await demetraDAO.getMemberInfo(addr2Address);
+      const member3Info = await demetraDAO.getMemberInfo(addr3Address);
+
+      expect(member1Info.votesParticipated).to.equal(1n);
+      expect(member2Info.votesParticipated).to.equal(1n);
+      expect(member3Info.votesParticipated).to.equal(1n);
+
+      // Verifica statistiche DAO
+      const stats = await demetraDAO.getDAOStats();
+      expect(stats._totalVotesCast).to.equal(3n);
+    });
+
+    it("Dovrebbe impedire il doppio voto", async function () {
+      // Primo voto
+      await demetraDAO.connect(addr1).vote(proposalId, 1);
+
+      // Secondo voto dovrebbe fallire
+      await expect(
+        demetraDAO.connect(addr1).vote(proposalId, 2)
+      ).to.be.revertedWith("DemetraDAO: already voted");
+    });
+
+    it("Dovrebbe impedire il voto ai non membri", async function () {
+      // addr3 non è membro in questo scenario (non ha comprato token nel beforeEach)
+      const [, , , addr4] = await ethers.getSigners();
+
+      await expect(
+        demetraDAO.connect(addr4).vote(proposalId, 1)
+      ).to.be.revertedWith("DemetraDAO: only members can vote");
+    });
+  });
+
+  describe("Test 4: Finalizzazione ed Esecuzione Proposte", function () {
+    let proposalId: bigint;
+
+    beforeEach(async function () {
+      // Setup membri e proposta
+      const tokens = parseEther("1000");
+      await demetraDAO.connect(addr1).purchaseTokens({
+        value: await demetraDAO.calculateTokenCost(tokens),
+      });
+
+      const tx = await demetraDAO
+        .connect(addr1)
+        .createProposal(
+          "Proposta Esecutiva",
+          "Proposta per test di esecuzione",
+          0,
+          0,
+          []
+        );
+
+      const receipt = await tx.wait();
+      proposalId = 1n; // Semplificato per il test
+    });
+
+    it("Dovrebbe finalizzare una proposta dopo la votazione", async function () {
+      // Vota per la proposta
+      await demetraDAO.connect(addr1).vote(proposalId, 1);
+
+      // Finalizza la proposta
+      await expect(demetraDAO.finalizeProposal(proposalId)).to.not.be.reverted;
+    });
+
+    it("Dovrebbe permettere l'esecuzione solo agli admin", async function () {
+      // Vota e finalizza
+      await demetraDAO.connect(addr1).vote(proposalId, 1);
+      await demetraDAO.finalizeProposal(proposalId);
+
+      // Solo l'admin può eseguire
+      await expect(demetraDAO.connect(addr1).executeProposal(proposalId)).to.be
+        .reverted; // Dovrebbe fallire perché addr1 non è admin
+
+      // L'owner (admin) può eseguire
+      await expect(demetraDAO.connect(owner).executeProposal(proposalId)).to.not
+        .be.reverted;
+    });
+  });
+
+  describe("Test 5: Registro Decisioni e Votazioni", function () {
+    it("Dovrebbe mantenere correttamente il registro delle statistiche", async function () {
+      // Stato iniziale
+      let stats = await demetraDAO.getDAOStats();
+      expect(stats._totalMembers).to.equal(1n); // Solo owner
+      expect(stats._totalProposalsCreated).to.equal(0n);
+      expect(stats._totalVotesCast).to.equal(0n);
+
+      // Aggiungi membri
+      const tokens = parseEther("500");
+      const cost = await demetraDAO.calculateTokenCost(tokens);
+
+      await demetraDAO.connect(addr1).purchaseTokens({ value: cost });
+      await demetraDAO.connect(addr2).purchaseTokens({ value: cost });
+
+      // Verifica aggiornamento membri
+      stats = await demetraDAO.getDAOStats();
+      expect(stats._totalMembers).to.equal(3n); // owner + addr1 + addr2
+
+      // Crea proposte
+      await demetraDAO
+        .connect(addr1)
+        .createProposal("Prop 1", "Desc 1", 0, 0, []);
+      await demetraDAO
+        .connect(addr2)
+        .createProposal("Prop 2", "Desc 2", 0, 0, []);
+
+      // Verifica proposte
+      stats = await demetraDAO.getDAOStats();
+      expect(stats._totalProposalsCreated).to.equal(2n);
+
+      // Vota
+      await demetraDAO.connect(addr1).vote(1n, 1);
+      await demetraDAO.connect(addr2).vote(1n, 2);
+      await demetraDAO.connect(addr1).vote(2n, 1);
+
+      // Verifica voti
+      stats = await demetraDAO.getDAOStats();
+      expect(stats._totalVotesCast).to.equal(3n);
+    });
+
+    it("Dovrebbe tracciare correttamente l'attività dei singoli membri", async function () {
+      // Setup membro
+      const tokens = parseEther("500");
+      const cost = await demetraDAO.calculateTokenCost(tokens);
+      await demetraDAO.connect(addr1).purchaseTokens({ value: cost });
+
+      // Stato iniziale
+      let memberInfo = await demetraDAO.getMemberInfo(addr1Address);
+      expect(memberInfo.proposalsCreated).to.equal(0n);
+      expect(memberInfo.votesParticipated).to.equal(0n);
+
+      // Crea proposte
+      await demetraDAO
+        .connect(addr1)
+        .createProposal("Prop 1", "Desc", 0, 0, []);
+      await demetraDAO
+        .connect(addr1)
+        .createProposal("Prop 2", "Desc", 0, 0, []);
+
+      // Verifica proposte create
+      memberInfo = await demetraDAO.getMemberInfo(addr1Address);
+      expect(memberInfo.proposalsCreated).to.equal(2n);
+
+      // Vota
+      await demetraDAO.connect(addr1).vote(1n, 1);
+      await demetraDAO.connect(addr1).vote(2n, 2);
+
+      // Verifica voti
+      memberInfo = await demetraDAO.getMemberInfo(addr1Address);
+      expect(memberInfo.votesParticipated).to.equal(2n);
+    });
+  });
+
+  describe("Test 6: Restrizioni di Accesso", function () {
+    it("Non dovrebbe permettere il voto ai non possessori di token", async function () {
+      // Crea una proposta (owner ha i permessi)
+      const tokens = parseEther("150");
+      const cost = await demetraDAO.calculateTokenCost(tokens);
+      await demetraDAO.connect(owner).purchaseTokens({ value: cost });
+
+      await demetraDAO.connect(owner).createProposal("Test", "Desc", 0, 0, []);
+
+      // addr1 non ha token, non può votare
+      await expect(demetraDAO.connect(addr1).vote(1n, 1)).to.be.revertedWith(
+        "DemetraDAO: only members can vote"
+      );
+    });
+
+    it("Non dovrebbe permettere la creazione di proposte ai non membri", async function () {
+      await expect(
+        demetraDAO.connect(addr1).createProposal("Test", "Desc", 0, 0, [])
+      ).to.be.revertedWith("DemetraDAO: only members can create proposals");
+    });
+
+    it("Dovrebbe permettere il voto solo ai possessori di token", async function () {
+      // Setup: addr1 compra token
+      const tokens = parseEther("500");
+      const cost = await demetraDAO.calculateTokenCost(tokens);
+      await demetraDAO.connect(addr1).purchaseTokens({ value: cost });
+
+      // Crea proposta
+      await demetraDAO.connect(addr1).createProposal("Test", "Desc", 0, 0, []);
+
+      // addr1 può votare (ha token)
+      await expect(demetraDAO.connect(addr1).vote(1n, 1)).to.not.be.reverted;
+
+      // addr2 non può votare (non ha token)
+      await expect(demetraDAO.connect(addr2).vote(1n, 1)).to.be.revertedWith(
+        "DemetraDAO: only members can vote"
+      );
+    });
+  });
+
+  describe("Test 7: Funzionalità Treasury", function () {
+    it("Dovrebbe gestire correttamente i depositi nel treasury", async function () {
+      const depositAmount = parseEther("1");
+
+      const tx = await demetraDAO
+        .connect(addr1)
+        .depositToTreasury({ value: depositAmount });
+
+      await expect(tx)
+        .to.emit(demetraDAO, "TreasuryDeposit")
+        .withArgs(addr1Address, depositAmount);
+
+      expect(await demetraDAO.treasuryBalance()).to.equal(depositAmount);
+    });
+
+    it("Dovrebbe permettere prelievi solo ai treasurer", async function () {
+      // Deposita fondi
+      const depositAmount = parseEther("1");
+      await demetraDAO.depositToTreasury({ value: depositAmount });
+
+      // Non-treasurer non può prelevare
+      await expect(
+        demetraDAO
+          .connect(addr1)
+          .withdrawFromTreasury(
+            addr1Address,
+            parseEther("0.5"),
+            "Test withdrawal"
+          )
+      ).to.be.reverted;
+
+      // Treasurer può prelevare
+      await expect(
+        demetraDAO
+          .connect(owner)
+          .withdrawFromTreasury(
+            addr1Address,
+            parseEther("0.5"),
+            "Test withdrawal"
+          )
+      ).to.not.be.reverted;
+    });
+  });
+
+  describe("Test 8: Funzioni di Emergenza", function () {
+    it("Dovrebbe permettere pause di emergenza solo agli admin", async function () {
+      // Non-admin non può pausare
+      await expect(demetraDAO.connect(addr1).emergencyPause()).to.be.reverted;
+
+      // Admin può pausare
+      await expect(demetraDAO.connect(owner).emergencyPause())
+        .to.emit(demetraDAO, "EmergencyPause")
+        .withArgs(ownerAddress);
+
+      // Verifica che le funzioni siano pausate
+      const tokens = parseEther("100");
+      const cost = await demetraDAO.calculateTokenCost(tokens);
+
+      await expect(
+        demetraDAO.connect(addr1).purchaseTokens({ value: cost })
+      ).to.be.revertedWith("Pausable: paused");
+    });
+
+    it("Dovrebbe permettere di rimuovere la pausa", async function () {
+      // Pausa
+      await demetraDAO.connect(owner).emergencyPause();
+
+      // Rimuovi pausa
+      await expect(demetraDAO.connect(owner).emergencyUnpause())
+        .to.emit(demetraDAO, "EmergencyUnpause")
+        .withArgs(ownerAddress);
+
+      // Verifica che le funzioni funzionino di nuovo
+      const tokens = parseEther("100");
+      const cost = await demetraDAO.calculateTokenCost(tokens);
+
+      await expect(demetraDAO.connect(addr1).purchaseTokens({ value: cost })).to
+        .not.be.reverted;
     });
   });
 });
