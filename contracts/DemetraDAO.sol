@@ -16,7 +16,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  * @dev Contratto principale della DAO Demetra
  * Orchestratore di tutti i componenti del sistema di governance
  */
-contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
+contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable, ERC20, ERC20Votes {
     using SafeERC20 for IERC20;
     
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -81,7 +81,10 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         uint256 _tokenPrice,
         uint256 _maxTotalSupply,
         address admin
-    ) {
+    )
+        ERC20(tokenName, tokenSymbol)
+        ERC20Permit(tokenName)
+    {
         require(_tokenPrice > 0, "DemetraDAO: token price must be positive");
         require(_maxTotalSupply > 0, "DemetraDAO: max supply must be positive");
         require(admin != address(0), "DemetraDAO: admin cannot be zero address");
@@ -448,7 +451,6 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
      */
     receive() external payable {
         treasuryBalance += msg.value;
-        emit TreasuryDeposit(msg.sender, msg.value);
     }
 
     /**
@@ -457,5 +459,18 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     fallback() external payable {
         treasuryBalance += msg.value;
         emit TreasuryDeposit(msg.sender, msg.value);
+    }
+
+    // Override required by Solidity for multiple inheritance (ERC20, ERC20Votes)
+    function _afterTokenTransfer(address from, address to, uint256 amount) internal override(ERC20, ERC20Votes) {
+        super._afterTokenTransfer(from, to, amount);
+    }
+
+    function _mint(address to, uint256 amount) internal override(ERC20, ERC20Votes) {
+        super._mint(to, amount);
+    }
+
+    function _burn(address account, uint256 amount) internal override(ERC20, ERC20Votes) {
+        super._burn(account, amount);
     }
 }

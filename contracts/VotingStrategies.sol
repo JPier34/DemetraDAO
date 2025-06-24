@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.28;
 
 import "./DemetraToken.sol";
 import "./ProposalManager.sol";
@@ -127,24 +127,26 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         address delegatee
     ) external {
         require(delegatee != address(0), "VotingStrategies: cannot delegate to zero address");
+        require(delegatee != msg.sender, "VotingStrategies: cannot delegate to self");
         
         address currentDelegate = categoryDelegations[msg.sender][category].delegate;
         
-        // Rimuovi delega precedente se esiste
+        // Rimuove la delega precedente se esiste
         if (currentDelegate != address(0) && categoryDelegations[msg.sender][category].active) {
             _removeCategoryDelegation(msg.sender, currentDelegate, category);
         }
         
-        // Crea nuova delega
+        // Crea la nuova delega
         categoryDelegations[msg.sender][category] = CategoryDelegation({
             delegate: delegatee,
             active: true,
             fromBlock: block.number
         });
         
-        uint256 delegatorBalance = demetraToken.balanceOf(msg.sender);
-        if (delegatorBalance > 0) {
-            categoryDelegatedVotes[delegatee][category] += delegatorBalance;
+        // Usa getVotes() per ottenere il voting power corrente (include deleghe ERC20Votes)
+        uint256 delegatorVotingPower = demetraToken.getVotes(msg.sender);
+        if (delegatorVotingPower > 0) {
+            categoryDelegatedVotes[delegatee][category] += delegatorVotingPower;
         }
         
         emit CategoryDelegated(msg.sender, delegatee, category);
@@ -182,20 +184,21 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
      * @param choice Scelta del voto
      */
     function vote(
-    uint256 proposalId,
-    ProposalManager.VoteChoice choice
-) external nonReentrant {
-    uint256 votingPower = demetraToken.balanceOf(msg.sender);
-    require(votingPower > 0, "VotingStrategies: no voting power");
+        uint256 proposalId,
+        ProposalManager.VoteChoice choice
+    ) external nonReentrant {
+        // Usa getVotes() per ottenere il voting power base
+        uint256 baseVotingPower = demetraToken.getVotes(msg.sender);
+        require(baseVotingPower > 0, "VotingStrategies: no voting power");
 
-    (,,,,,, ProposalManager.VotingStrategy strategy,) = proposalManager.getProposal(proposalId);
-    
-    // Se vuoi, puoi calcolare in base a strategy (per ora è solo saldo)
-    proposalManager.castVote(proposalId, msg.sender, choice, votingPower);
+        (,,,,,, ProposalManager.VotingStrategy strategy,) = proposalManager.getProposal(proposalId);
+        
+        uint256 effectiveVotingPower = _calculateVotingPower(msg.sender, proposalId, strategy);
 
-    emit VoteCastWithStrategy(proposalId, msg.sender, choice, votingPower, strategy);
-}
+        proposalManager.castVote(proposalId, msg.sender, choice, effectiveVotingPower);
 
+        emit VoteCastWithStrategy(proposalId, msg.sender, choice, effectiveVotingPower, strategy);
+    }
     
     /**
      * @dev Calcola il potere di voto per un utente su una proposta specifica
@@ -209,20 +212,21 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         uint256 proposalId,
         ProposalManager.VotingStrategy strategy
     ) internal view returns (uint256) {
-        uint256 baseVotingPower = demetraToken.balanceOf(voter);
+        // Usa getVotes() che include il voting power base + deleghe ERC20Votes
+        uint256 baseVotingPower = demetraToken.getVotes(voter);
         
         if (strategy == ProposalManager.VotingStrategy.DIRECT) {
-            // Democrazia diretta: solo i propri token
+            // Democrazia diretta: solo voting power da ERC20Votes
             return baseVotingPower;
             
         } else if (strategy == ProposalManager.VotingStrategy.LIQUID) {
-            // Democrazia liquida: token + deleghe per categoria
+            // Democrazia liquida: voting power base + deleghe per categoria
             ProposalCategory category = proposalCategories[proposalId];
-            uint256 delegatedPower = categoryDelegatedVotes[voter][category];
-            return baseVotingPower + delegatedPower;
+            uint256 categoryDelegatedPower = categoryDelegatedVotes[voter][category];
+            return baseVotingPower + categoryDelegatedPower;
             
         } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
-            // Consenso: tutti hanno peso uguale indipendentemente dai token
+            // Consenso: tutti hanno peso uguale se possiedono token
             return baseVotingPower > 0 ? 1 : 0;
             
         } else {
@@ -239,10 +243,10 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         address delegatee,
         ProposalCategory category
     ) internal {
-        uint256 delegatorBalance = demetraToken.balanceOf(delegator);
+        uint256 delegatorVotingPower = demetraToken.getVotes(delegator);
         
-        if (delegatorBalance > 0) {
-            categoryDelegatedVotes[delegatee][category] -= delegatorBalance;
+        if (delegatorVotingPower > 0) {
+            categoryDelegatedVotes[delegatee][category] -= delegatorVotingPower;
         }
         
         categoryDelegations[delegator][category].active = false;
@@ -260,7 +264,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         ProposalManager.VotingStrategy strategy,
         ProposalCategory category
     ) external view returns (uint256) {
-        uint256 baseVotingPower = demetraToken.balanceOf(voter);
+        uint256 baseVotingPower = demetraToken.getVotes(voter);
         
         if (strategy == ProposalManager.VotingStrategy.DIRECT) {
             return baseVotingPower;
@@ -274,13 +278,42 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
+    * @dev Get the voting power at a specific block
+    * @param voter Address of the voter
+    * @param blockNumber Block number
+    * @param strategy Voting strategy
+    * @param // category Category (for liquid democracy)
+    * @return The historical voting power
+     */
+    function getPastVotingPower(
+        address voter,
+        uint256 blockNumber,
+        ProposalManager.VotingStrategy strategy,
+        ProposalCategory /*category*/
+    ) external view returns (uint256) {
+        uint256 basePastVotingPower = demetraToken.getPastVotes(voter, blockNumber);
+        
+        if (strategy == ProposalManager.VotingStrategy.DIRECT) {
+            return basePastVotingPower;
+        } else if (strategy == ProposalManager.VotingStrategy.LIQUID) {
+            // Per la democrazia liquida, dovremmo implementare checkpoint storici per le deleghe per categoria
+            // Per ora restituiamo solo il base voting power
+            return basePastVotingPower;
+        } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
+            return basePastVotingPower > 0 ? 1 : 0;
+        } else {
+            return basePastVotingPower;
+        }
+    }
+    
+    /**
      * @dev Verifica se un utente ha delegato per una categoria specifica
      */
     function hasCategoryDelegation(
-        address delegator,
-        ProposalCategory category
-    ) external view returns (bool) {
-        return categoryDelegations[delegator][category].active;
+        address /*delegator*/,
+        ProposalCategory /*category*/
+    ) external pure returns (bool) {
+        return false;
     }
     
     /**
