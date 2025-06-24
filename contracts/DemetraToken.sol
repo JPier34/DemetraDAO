@@ -4,20 +4,19 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Snapshot.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/draft-ERC20Permit.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title DemetraToken
- * @dev Token ERC-20 per la governance della DAO Demetra (OpenZeppelin v4.x)
- * Supporta snapshot per votazioni e sistema di deleghe tramite ERC20Votes
+ * @dev Token ERC-20 DAO for Demetra governance (OpenZeppelin v4)
  */
 contract DemetraToken is AccessControl, ReentrancyGuard, ERC20, ERC20Snapshot, ERC20Permit, ERC20Votes {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant SNAPSHOT_ROLE = keccak256("SNAPSHOT_ROLE");
     
-    // Eventi aggiuntivi
+    // adding more events
     event TokensMinted(address indexed to, uint256 amount);
     
     constructor(
@@ -60,7 +59,6 @@ contract DemetraToken is AccessControl, ReentrancyGuard, ERC20, ERC20Snapshot, E
         return getPastVotes(account, blockNumber);
     }
     
-    // Override necessari per v4.x
     function _beforeTokenTransfer(address from, address to, uint256 amount)
         internal
         override(ERC20, ERC20Snapshot)

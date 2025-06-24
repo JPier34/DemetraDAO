@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title ProposalManager
- * @dev Gestisce il ciclo di vita completo delle proposte nella DAO Demetra
+ * @dev Handles proposal creation, voting, execution, and management in the DAO.
  */
 contract ProposalManager is AccessControl, ReentrancyGuard {
     
@@ -18,25 +18,25 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
     
     // Enumerazioni - IMPORTANTE: ordine coerente con altri contratti
     enum ProposalState {
-        Pending,    // 0 - Proposta creata ma non ancora attiva
-        Active,     // 1 - In fase di votazione
-        Succeeded,  // 2 - Approvata ma non eseguita (era 4, ora 2)
-        Executed,   // 3 - Approvata ed eseguita
-        Failed,     // 4 - Respinta o scaduta (era 2, ora 4)
-        Cancelled   // 5 - Cancellata dall'amministratore
+        Pending,    // 0 - Proposal created but not yet active
+        Active,     // 1 - Voting in progress
+        Succeeded,  // 2 - Approved but not executed (was 4, now 2)
+        Executed,   // 3 - Approved and executed
+        Failed,     // 4 - Rejected or expired (was 2, now 4)
+        Cancelled   // 5 - Cancelled by administrator
     }
     
     enum VotingStrategy {
-        DIRECT,         // 0 - Democrazia diretta (era SIMPLE_MAJORITY)
-        LIQUID,         // 1 - Democrazia liquida
-        REPRESENTATIVE, // 2 - Democrazia rappresentativa
-        CONSENSUS       // 3 - Consenso
+        DIRECT,         // 0 - Direct democracy (was SIMPLE_MAJORITY)
+        LIQUID,         // 1 - Liquid democracy
+        REPRESENTATIVE, // 2 - Representative democracy
+        CONSENSUS       // 3 - Consensus
     }
     
     enum VoteChoice {
-        ABSTAIN,    // 0 - Astensione
-        FOR,        // 1 - A favore
-        AGAINST     // 2 - Contro
+        ABSTAIN,    // 0 - Abstain
+        FOR,        // 1 - Favor
+        AGAINST     // 2 - Contrary
     }
     
     // Struttura per le azioni eseguibili
@@ -68,17 +68,17 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         mapping(address => VoteChoice) votes;
     }
     
-    // Storage
-    mapping(uint256 => Proposal) public proposals;
+      // Storage
+    mapping(uint256 => Proposal) private proposals;
     uint256[] public proposalsList;
     
-    // Parametri di configurazione
+    // Conf Parameters
     uint256 public constant MIN_VOTING_PERIOD = 1 days;
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
     uint256 public constant MIN_QUORUM = 1000; // 10% in basis points
     uint256 public constant MAX_QUORUM = 5000; // 50% in basis points
     
-    // Eventi
+    // Events
     event ProposalCreated(
         uint256 indexed proposalId,
         address indexed proposer,
@@ -140,7 +140,7 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         proposal.approvalThreshold = threshold;
         proposal.state = ProposalState.Active;
         
-        // Aggiungi le azioni
+        // Adds the actions to the proposal
         for (uint256 i = 0; i < actions.length; i++) {
             proposal.actions.push(actions[i]);
         }
@@ -174,11 +174,11 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         require(block.timestamp <= proposal.endTime, "ProposalManager: voting period ended");
         require(!proposal.hasVoted[voter], "ProposalManager: voter already voted");
         
-        // Registra il voto
+        // Register the vote
         proposal.hasVoted[voter] = true;
         proposal.votes[voter] = choice;
         
-        // Aggiorna i conteggi
+        // Actualize the vote counts
         if (choice == VoteChoice.FOR) {
             proposal.forVotes += votingPower;
         } else if (choice == VoteChoice.AGAINST) {
@@ -203,27 +203,27 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         uint256 totalVotes = proposal.forVotes + proposal.againstVotes + proposal.abstainVotes;
         uint256 quorumNeeded = (totalSupply * proposal.quorumRequired) / 10000;
         
-        // Verifica quorum
+        // Verifying quorum
         if (totalVotes < quorumNeeded) {
             proposal.state = ProposalState.Failed;
             emit ProposalStateChanged(proposalId, ProposalState.Failed);
             return;
         }
         
-        // Verifica approvazione in base alla strategia
+        // Verifying approvals following the strategy
         bool approved = false;
         
         if (proposal.strategy == VotingStrategy.DIRECT || proposal.strategy == VotingStrategy.LIQUID) {
-            // Maggioranza semplice o qualificata
+            // Simple majority (liquid democracy)
             uint256 approvalNeeded = (totalVotes * proposal.approvalThreshold) / 10000;
             approved = proposal.forVotes >= approvalNeeded;
         } else if (proposal.strategy == VotingStrategy.REPRESENTATIVE) {
-            // Logica per democrazia rappresentativa (simile a diretta per ora)
+            // Representative democracy: treshold required
             uint256 approvalNeeded = (totalVotes * proposal.approvalThreshold) / 10000;
             approved = proposal.forVotes >= approvalNeeded;
         } else if (proposal.strategy == VotingStrategy.CONSENSUS) {
-            // Consenso: richiede supermajority (75%+)
-            uint256 consensusNeeded = (totalVotes * 7500) / 10000; // 75%
+            // Consensus: supermajority required (75%+)
+            uint256 consensusNeeded = (totalVotes * 7500) / 10000; 
             approved = proposal.forVotes >= consensusNeeded;
         }
         
@@ -243,14 +243,14 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         
         proposal.state = ProposalState.Executed;
         
-        // Esegui le azioni
+        // Executes actions
         for (uint256 i = 0; i < proposal.actions.length; i++) {
             ProposalAction memory action = proposal.actions[i];
             
             (bool actionSuccess, ) = action.target.call{value: action.value}(action.data);
             if (!actionSuccess) {
-                // Se un'azione fallisce, revertiamo tutto
-                proposal.state = ProposalState.Succeeded; // Riporta allo stato precedente
+                // If failure, revert 
+                proposal.state = ProposalState.Succeeded; // Back to previous state
                 return false;
             }
         }
@@ -272,7 +272,7 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         emit ProposalStateChanged(proposalId, ProposalState.Cancelled);
     }
     
-    // Funzioni di lettura
+    // Reading functions
     
     function getProposalState(uint256 proposalId) external view returns (ProposalState) {
         require(proposals[proposalId].id != 0, "ProposalManager: proposal does not exist");

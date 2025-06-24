@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
  * @title DemetraDAO
- * @dev Contratto DAO ottimizzato per dimensioni - Funzionalità essenziali
+ * @dev DAO contract for the handling of proposals, voting, and token management.
  */
 contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     
@@ -18,19 +18,19 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
     bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
     
-    // Contratti collegati
+    // Contracts related
     DemetraToken public immutable demetraToken;
     ProposalManager public immutable proposalManager;
     VotingStrategies public immutable votingStrategies;
     
-    // Configurazione token sale
+    // Token sale config
     bool public tokenSaleActive;
     uint256 public tokenPrice;
     uint256 public constant MIN_PURCHASE = 1 ether;
     uint256 public constant MAX_PURCHASE = 10000 ether;
     uint256 public maxTotalSupply;
     
-    // Membri
+    // Members
     struct Member {
         bool isActive;
         uint256 joinedAt;
@@ -46,12 +46,12 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     // Treasury
     uint256 public treasuryBalance;
     
-    // Statistiche
+    // Stats
     uint256 public totalProposalsCreated;
     uint256 public totalVotesCast;
     uint256 public totalFundsRaised;
     
-    // Eventi essenziali
+    // Essential events
     event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
     event MemberJoined(address indexed member, uint256 tokensOwned);
     event ProposalSubmitted(uint256 indexed proposalId, address indexed proposer);
@@ -73,7 +73,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         require(_maxTotalSupply > 0, "DemetraDAO: max supply must be positive");
         require(admin != address(0), "DemetraDAO: admin cannot be zero address");
         
-        // Deploy contratti collegati
+        // Related contracts deploy 
         demetraToken = new DemetraToken(tokenName, tokenSymbol, address(this));
         proposalManager = new ProposalManager(address(this));
         votingStrategies = new VotingStrategies(
@@ -82,27 +82,27 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
             address(this)
         );
         
-        // Configurazione
+        // Config
         tokenPrice = _tokenPrice;
         maxTotalSupply = _maxTotalSupply;
         tokenSaleActive = true;
         
-        // Setup ruoli
+        // Setup roles
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(ADMIN_ROLE, admin);
         _grantRole(TREASURER_ROLE, admin);
         _grantRole(PROPOSER_ROLE, admin);
         
-        // Grant DAO_ROLE a VotingStrategies
+        // Grant DAO_ROLE to VotingStrategies
         bytes32 DAO_ROLE = keccak256("DAO_ROLE");
         proposalManager.grantRole(DAO_ROLE, address(votingStrategies));
         
-        // Aggiungi admin come primo membro
+        // Adds admin as first member
         _addMember(admin, 0);
     }
     
     /**
-     * @dev Acquisto token
+     * @dev  Purchasing token/s
      */
     function purchaseTokens() external payable nonReentrant whenNotPaused {
         require(tokenSaleActive, "DemetraDAO: token sale not active");
@@ -119,14 +119,14 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         // Mint token
         demetraToken.mint(msg.sender, tokensToMint);
         
-        // Gestione membership
+        // Membership handling
         if (!members[msg.sender].isActive) {
             _addMember(msg.sender, tokensToMint);
         } else {
             members[msg.sender].tokensOwned += tokensToMint;
         }
         
-        // Aggiorna treasury
+        // Actualize treasury
         treasuryBalance += msg.value;
         totalFundsRaised += msg.value;
         
@@ -134,7 +134,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Creazione proposta
+     * @dev Proposal creation
      */
     function createProposal(
         string memory title,
@@ -146,14 +146,14 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         require(members[msg.sender].isActive, "DemetraDAO: only members can create proposals");
         require(demetraToken.balanceOf(msg.sender) >= 100 ether, "DemetraDAO: insufficient tokens to propose");
         
-        // Ottieni parametri
+        // Get parameters
         (uint256 quorum, uint256 threshold, uint256 votingPeriod) = 
             votingStrategies.getSuggestedParameters(strategy);
         
-        // Crea snapshot
+        // Create snapshot
         uint256 snapshotId = demetraToken.snapshot();
         
-        // Crea proposta
+        // Create proposal
         uint256 proposalId = proposalManager.createProposal(
             msg.sender,
             title,
@@ -166,12 +166,12 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
             snapshotId
         );
         
-        // Categorizza se necessario
+        // Categorize if necessary
         if (strategy == ProposalManager.VotingStrategy.LIQUID) {
             votingStrategies.categorizeProposal(proposalId, category);
         }
         
-        // Aggiorna statistiche
+        // Actualize stats
         members[msg.sender].proposalsCreated++;
         totalProposalsCreated++;
         
@@ -180,7 +180,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Voto
+     * @dev Voting
      */
     function vote(
         uint256 proposalId,
@@ -189,10 +189,10 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         require(members[msg.sender].isActive, "DemetraDAO: only members can vote");
         require(!proposalManager.hasVoted(proposalId, msg.sender), "DemetraDAO: already voted");
         
-        // Delega a VotingStrategies
+        // Delegate to VotingStrategies
         votingStrategies.vote(proposalId, msg.sender, choice);
         
-        // Aggiorna statistiche
+        // Actualize stats
         members[msg.sender].votesParticipated++;
         totalVotesCast++;
         
@@ -200,7 +200,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Finalizza proposta
+     * @dev Finalize proposal
      */
     function finalizeProposal(uint256 proposalId) external nonReentrant {
         uint256 totalSupply = demetraToken.totalSupply();
@@ -208,7 +208,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Controlla se un utente può votare
+     * @dev Check if a voter can vote on a proposal
      */
     function canVote(address voter, uint256 proposalId) external view returns (bool, string memory) {
         if (!members[voter].isActive) {
@@ -223,7 +223,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         return (true, "Can vote");
     }
     
-    // === TREASURY SEMPLIFICATO ===
+    // Treasury simplified
     
     function depositToTreasury() external payable {
         require(msg.value > 0, "DemetraDAO: deposit must be positive");
@@ -247,7 +247,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         emit TreasuryWithdrawal(to, amount, reason);
     }
     
-    // === FUNZIONI DI LETTURA ===
+    // Reading functions
     
     function isMember(address account) external view returns (bool) {
         return members[account].isActive;
@@ -291,10 +291,10 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     }
     
     function calculateTokenCost(uint256 tokenAmount) external view returns (uint256) {
-        return (tokenAmount * tokenPrice) / 1 ether; // Assumendo che tokenPrice sia in wei
+        return (tokenAmount * tokenPrice) / 1 ether; //always checks types for tests
     }
     
-    // === FUNZIONI ADMIN ===
+    // Admin functions
     
     function disableTokenSale() external onlyRole(ADMIN_ROLE) {
         tokenSaleActive = false;
@@ -321,7 +321,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         emit EmergencyUnpause(msg.sender);
     }
     
-    // === FUNZIONI INTERNE ===
+    // Internal functions
     
     function _addMember(address account, uint256 tokensOwned) internal {
         require(account != address(0), "DemetraDAO: invalid address");
@@ -341,7 +341,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         emit MemberJoined(account, tokensOwned);
     }
     
-    // Fallback per ricevere ETH
+    // Fallback to get ETH
     receive() external payable {
         treasuryBalance += msg.value;
         emit TreasuryDeposit(msg.sender, msg.value);

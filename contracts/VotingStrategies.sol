@@ -9,8 +9,8 @@ import "hardhat/console.sol";
 
 /**
  * @title VotingStrategies
- * @dev CENTRALIZZA tutta la logica di voto per la DAO Demetra
- * Responsabile di: calcolo voting power, deleghe, esecuzione voti
+ * @dev CENTRALIZES all voting logic for the Demetra DAO
+ * Responsible for: voting power calculation, delegations, vote execution
  */
 contract VotingStrategies is AccessControl, ReentrancyGuard {
     bytes32 public constant DAO_ROLE = keccak256("DAO_ROLE");
@@ -25,25 +25,25 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         uint256 fromBlock;
     }
     
-    // Categorie di proposte per democrazia liquida
+    // Proposal categories for liquid democracy
     enum ProposalCategory {
-        GENERAL,        // 0 - Categoria generale (default)
-        STRATEGIC,      // 1 - Decisioni strategiche
-        OPERATIONAL,    // 2 - Decisioni operative
-        TECHNICAL,      // 3 - Decisioni tecniche
-        GOVERNANCE      // 4 - Modifiche alla governance
+        GENERAL,        // 0 - General category (default)
+        STRATEGIC,      // 1 - Strategic decisions
+        OPERATIONAL,    // 2 - Operational decisions
+        TECHNICAL,      // 3 - Technical decisions
+        GOVERNANCE      // 4 - Governance changes
     }
     
-    // Mapping per deleghe per categoria
+    // Mapping for category-based delegations
     mapping(address => mapping(ProposalCategory => CategoryDelegation)) public categoryDelegations;
     
-    // Mapping per voti delegati per categoria
+    // Mapping for delegated votes per category
     mapping(address => mapping(ProposalCategory => uint256)) public categoryDelegatedVotes;
     
-    // Mapping per categorie delle proposte
+    // Mapping for proposal categories
     mapping(uint256 => ProposalCategory) public proposalCategories;
     
-    // Parametri per le strategie
+    // Parameters for strategies
     struct StrategyParameters {
         uint256 directQuorum;
         uint256 directThreshold;
@@ -99,7 +99,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(DAO_ROLE, admin);
         
-        // Parametri di default
+        // Default strategy parameters (on a scale of 10.000)
         strategyParams = StrategyParameters({
             directQuorum: 3000,        // 30%
             directThreshold: 6000,     // 60%
@@ -114,8 +114,8 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev FUNZIONE PRINCIPALE DI VOTO - chiamata da DemetraDAO
-     * Gestisce tutta la logica di voto e calcola il voting power corretto
+     * @dev MAIN VOTE FUNCTION - called by DemetraDAO
+     * Handles voting logic based on the strategy and calculates effective voting power
      */
     function vote(
         uint256 proposalId,
@@ -124,27 +124,27 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     ) external onlyRole(DAO_ROLE) nonReentrant {
         console.log("VotingStrategies.vote called for proposal %s by voter %s", proposalId, voter);
         
-        // Verifica che il votante abbia voting power base
+        // Verify if the voter has voting power
         uint256 baseVotingPower = demetraToken.getVotes(voter);
         console.log("Base voting power for voter %s: %s", voter, baseVotingPower);
         require(baseVotingPower > 0, "VotingStrategies: no voting power");
         
-        // Ottieni informazioni sulla proposta
+        // Get proposal details
         (, , , , , , ProposalManager.VotingStrategy strategy, ) = proposalManager.getProposal(proposalId);
         console.log("Proposal %s uses strategy: %s", proposalId, uint256(strategy));
         
-        // Calcola il voting power effettivo basato sulla strategia
+        // Calculate effective voting power based on the strategy
         uint256 effectiveVotingPower = _calculateEffectiveVotingPower(voter, proposalId, strategy);
         console.log("Effective voting power calculated: %s", effectiveVotingPower);
         
-        // Esegui il voto tramite ProposalManager
+        // Execute vote by ProposalManager
         proposalManager.castVote(proposalId, voter, choice, effectiveVotingPower);
         
         emit VoteCastWithStrategy(proposalId, voter, choice, effectiveVotingPower, strategy);
     }
     
     /**
-     * @dev Calcola il voting power effettivo per una strategia specifica
+     * @dev Calculate effective voting power based for each strategy  
      */
     function _calculateEffectiveVotingPower(
         address voter,
@@ -167,7 +167,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
             return totalPower;
             
         } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
-            // Nel consenso, ogni membro con token ha peso 1
+            // In consensus strategy, we return 1 if the voter has any voting power
             uint256 consensusPower = baseVotingPower > 0 ? 1 : 0;
             console.log("Using CONSENSUS strategy - returning: %s", consensusPower);
             return consensusPower;
@@ -179,7 +179,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev Delega voti per una categoria specifica
+     * @dev Delegate votes for a specific category
      */
     function delegateForCategory(
         ProposalCategory category,
@@ -190,19 +190,19 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         
         address currentDelegate = categoryDelegations[msg.sender][category].delegate;
         
-        // Rimuovi delega precedente se esiste
+        // Remove delegation if already exists
         if (currentDelegate != address(0) && categoryDelegations[msg.sender][category].active) {
             _removeCategoryDelegation(msg.sender, currentDelegate, category);
         }
         
-        // Crea nuova delega
+        // Create new delegation
         categoryDelegations[msg.sender][category] = CategoryDelegation({
             delegate: delegatee,
             active: true,
             fromBlock: block.number
         });
         
-        // Aggiorna i voti delegati
+        // Actualize delegated votes
         uint256 delegatorVotingPower = demetraToken.getVotes(msg.sender);
         if (delegatorVotingPower > 0) {
             categoryDelegatedVotes[delegatee][category] += delegatorVotingPower;
@@ -212,7 +212,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev Revoca delega per una categoria
+     * @dev Revoke delegation for a specific category
      */
     function revokeCategoryDelegation(ProposalCategory category) external {
         address currentDelegate = categoryDelegations[msg.sender][category].delegate;
@@ -225,7 +225,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev Categorizza una proposta (solo DAO)
+     * @dev Categorize a proposal
      */
     function categorizeProposal(
         uint256 proposalId,
@@ -236,7 +236,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev Rimuove una delega per categoria
+     * @dev Remove a delegation for a specific category
      */
     function _removeCategoryDelegation(
         address delegator,
@@ -245,20 +245,20 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     ) internal {
         uint256 delegatorVotingPower = demetraToken.getVotes(delegator);
         
-        // Rimuovi i voti delegati
+        // Remove delegated votes from the delegatee
         if (delegatorVotingPower > 0 && categoryDelegatedVotes[delegatee][category] >= delegatorVotingPower) {
             categoryDelegatedVotes[delegatee][category] -= delegatorVotingPower;
         }
         
-        // Disattiva la delega
+        // Desable delegation
         categoryDelegations[delegator][category].active = false;
         categoryDelegations[delegator][category].delegate = address(0);
     }
     
-    // === FUNZIONI DI LETTURA ===
+    // Reading functions
     
     /**
-     * @dev Ottieni il voting power attuale per una strategia specifica
+     * @dev Get actual power for each voting strategy
      */
     function getCurrentVotingPower(
         address voter,
@@ -279,7 +279,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev Ottieni il voting power storico
+     * @dev Get past voting power
      */
     function getPastVotingPower(
         address voter,
@@ -292,8 +292,6 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         if (strategy == ProposalManager.VotingStrategy.DIRECT) {
             return basePastVotingPower;
         } else if (strategy == ProposalManager.VotingStrategy.LIQUID) {
-            // Per ora restituiamo solo base power - in futuro si potrebbe implementare
-            // un sistema di checkpoint per le deleghe storiche
             return basePastVotingPower;
         } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
             return basePastVotingPower > 0 ? 1 : 0;
@@ -331,7 +329,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev Suggerisci parametri ottimali per una strategia
+     * @dev Suggest optimal parameters for a given voting strategy
      */
     function getSuggestedParameters(ProposalManager.VotingStrategy strategy) 
         external 
@@ -353,7 +351,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         return strategyParams;
     }
     
-    // === FUNZIONI ADMIN ===
+    // Admin functions
     
     function updateStrategyParameters(
         uint256 directQuorum,
