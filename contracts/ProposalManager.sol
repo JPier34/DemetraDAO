@@ -1,41 +1,42 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 
 /**
  * @title ProposalManager
- * @dev Gestisce il ciclo di vita completo delle proposte nella DAO Demetra
+ * @dev Handles proposal creation, voting, execution, and management in the DAO.
  */
 contract ProposalManager is AccessControl, ReentrancyGuard {
-    using Counters for Counters.Counter;
     
     bytes32 public constant DAO_ROLE = keccak256("DAO_ROLE");
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
     
-    // Enumerazioni
+    // Counter manuale per proposal IDs
+    uint256 private _proposalIdCounter;
+    
+    // Enumerazioni - IMPORTANTE: ordine coerente con altri contratti
     enum ProposalState {
-        Pending,    // Proposta creata ma non ancora attiva
-        Active,     // In fase di votazione
-        Succeeded,  // Approvata ma non eseguita
-        Executed,   // Approvata ed eseguita
-        Failed,     // Respinta o scaduta
-        Cancelled   // Cancellata dall'amministratore
+        Pending,    // 0 - Proposal created but not yet active
+        Active,     // 1 - Voting in progress
+        Succeeded,  // 2 - Approved but not executed (was 4, now 2)
+        Executed,   // 3 - Approved and executed
+        Failed,     // 4 - Rejected or expired (was 2, now 4)
+        Cancelled   // 5 - Cancelled by administrator
     }
     
     enum VotingStrategy {
-        DIRECT,         // Democrazia diretta
-        LIQUID,         // Democrazia liquida
-        REPRESENTATIVE, // Democrazia rappresentativa
-        CONSENSUS       // Consenso
+        DIRECT,         // 0 - Direct democracy (was SIMPLE_MAJORITY)
+        LIQUID,         // 1 - Liquid democracy
+        REPRESENTATIVE, // 2 - Representative democracy
+        CONSENSUS       // 3 - Consensus
     }
     
     enum VoteChoice {
-        AGAINST,    // 0
-        FOR,        // 1
-        ABSTAIN     // 2
+        ABSTAIN,    // 0 - Abstain
+        FOR,        // 1 - Favor
+        AGAINST     // 2 - Contrary
     }
     
     // Struttura per le azioni eseguibili
@@ -67,18 +68,17 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         mapping(address => VoteChoice) votes;
     }
     
-    // Storage
-    Counters.Counter private _proposalIds;
-    mapping(uint256 => Proposal) public proposals;
+      // Storage
+    mapping(uint256 => Proposal) private proposals;
     uint256[] public proposalsList;
     
-    // Parametri di configurazione
+    // Conf Parameters
     uint256 public constant MIN_VOTING_PERIOD = 1 days;
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
     uint256 public constant MIN_QUORUM = 1000; // 10% in basis points
     uint256 public constant MAX_QUORUM = 5000; // 50% in basis points
     
-    // Eventi
+    // Events
     event ProposalCreated(
         uint256 indexed proposalId,
         address indexed proposer,
@@ -99,10 +99,6 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
     event ProposalCancelled(uint256 indexed proposalId);
     event ProposalStateChanged(uint256 indexed proposalId, ProposalState newState);
     
-    /**
-     * @dev Costruttore
-     * @param admin Indirizzo dell'amministratore
-     */
     constructor(address admin) {
         require(admin != address(0), "ProposalManager: admin cannot be zero address");
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -110,18 +106,6 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         _grantRole(EXECUTOR_ROLE, admin);
     }
     
-    /**
-     * @dev Crea una nuova proposta
-     * @param proposer Indirizzo del proponente
-     * @param title Titolo della proposta
-     * @param description Descrizione dettagliata
-     * @param votingPeriod Durata del periodo di votazione in secondi
-     * @param strategy Strategia di voto da utilizzare
-     * @param quorum Quorum richiesto in basis points (es. 2000 = 20%)
-     * @param threshold Soglia di approvazione in basis points (es. 5000 = 50%)
-     * @param actions Array di azioni da eseguire se approvata
-     * @param snapshotId ID dello snapshot per i token
-     */
     function createProposal(
         address proposer,
         string memory title,
@@ -140,8 +124,8 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         require(quorum >= MIN_QUORUM && quorum <= MAX_QUORUM, "ProposalManager: invalid quorum");
         require(threshold >= 5000 && threshold <= 10000, "ProposalManager: invalid threshold");
         
-        _proposalIds.increment();
-        uint256 proposalId = _proposalIds.current();
+        _proposalIdCounter++;
+        uint256 proposalId = _proposalIdCounter;
         
         Proposal storage proposal = proposals[proposalId];
         proposal.id = proposalId;
@@ -156,7 +140,7 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         proposal.approvalThreshold = threshold;
         proposal.state = ProposalState.Active;
         
-        // Aggiungi le azioni
+        // Adds the actions to the proposal
         for (uint256 i = 0; i < actions.length; i++) {
             proposal.actions.push(actions[i]);
         }
@@ -175,13 +159,6 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         return proposalId;
     }
     
-    /**
-     * @dev Registra un voto per una proposta
-     * @param proposalId ID della proposta
-     * @param voter Indirizzo del votante
-     * @param choice Scelta del voto (FOR, AGAINST, ABSTAIN)
-     * @param votingPower Potere di voto del votante
-     */
     function castVote(
         uint256 proposalId,
         address voter,
@@ -197,11 +174,11 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         require(block.timestamp <= proposal.endTime, "ProposalManager: voting period ended");
         require(!proposal.hasVoted[voter], "ProposalManager: voter already voted");
         
-        // Registra il voto
+        // Register the vote
         proposal.hasVoted[voter] = true;
         proposal.votes[voter] = choice;
         
-        // Aggiorna i conteggi
+        // Actualize the vote counts
         if (choice == VoteChoice.FOR) {
             proposal.forVotes += votingPower;
         } else if (choice == VoteChoice.AGAINST) {
@@ -213,11 +190,6 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         emit VoteCast(proposalId, voter, choice, votingPower);
     }
     
-    /**
-     * @dev Finalizza una proposta e determina il risultato
-     * @param proposalId ID della proposta
-     * @param totalSupply Supply totale dei token al momento dello snapshot
-     */
     function finalizeProposal(uint256 proposalId, uint256 totalSupply) 
         external 
         onlyRole(DAO_ROLE) 
@@ -231,27 +203,27 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         uint256 totalVotes = proposal.forVotes + proposal.againstVotes + proposal.abstainVotes;
         uint256 quorumNeeded = (totalSupply * proposal.quorumRequired) / 10000;
         
-        // Verifica quorum
+        // Verifying quorum
         if (totalVotes < quorumNeeded) {
             proposal.state = ProposalState.Failed;
             emit ProposalStateChanged(proposalId, ProposalState.Failed);
             return;
         }
         
-        // Verifica approvazione in base alla strategia
+        // Verifying approvals following the strategy
         bool approved = false;
         
         if (proposal.strategy == VotingStrategy.DIRECT || proposal.strategy == VotingStrategy.LIQUID) {
-            // Maggioranza semplice o qualificata
+            // Simple majority (liquid democracy)
             uint256 approvalNeeded = (totalVotes * proposal.approvalThreshold) / 10000;
             approved = proposal.forVotes >= approvalNeeded;
         } else if (proposal.strategy == VotingStrategy.REPRESENTATIVE) {
-            // Logica per democrazia rappresentativa (simile a diretta per ora)
+            // Representative democracy: treshold required
             uint256 approvalNeeded = (totalVotes * proposal.approvalThreshold) / 10000;
             approved = proposal.forVotes >= approvalNeeded;
         } else if (proposal.strategy == VotingStrategy.CONSENSUS) {
-            // Consenso: richiede supermajority (75%+)
-            uint256 consensusNeeded = (totalVotes * 7500) / 10000; // 75%
+            // Consensus: supermajority required (75%+)
+            uint256 consensusNeeded = (totalVotes * 7500) / 10000; 
             approved = proposal.forVotes >= consensusNeeded;
         }
         
@@ -259,10 +231,6 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         emit ProposalStateChanged(proposalId, proposal.state);
     }
     
-    /**
-     * @dev Esegue una proposta approvata
-     * @param proposalId ID della proposta da eseguire
-     */
     function executeProposal(uint256 proposalId) 
         external 
         onlyRole(EXECUTOR_ROLE) 
@@ -275,14 +243,14 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         
         proposal.state = ProposalState.Executed;
         
-        // Esegui le azioni
+        // Executes actions
         for (uint256 i = 0; i < proposal.actions.length; i++) {
             ProposalAction memory action = proposal.actions[i];
             
             (bool actionSuccess, ) = action.target.call{value: action.value}(action.data);
             if (!actionSuccess) {
-                // Se un'azione fallisce, revertiamo tutto
-                proposal.state = ProposalState.Succeeded; // Riporta allo stato precedente
+                // If failure, revert 
+                proposal.state = ProposalState.Succeeded; // Back to previous state
                 return false;
             }
         }
@@ -293,10 +261,6 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         return true;
     }
     
-    /**
-     * @dev Cancella una proposta (solo admin)
-     * @param proposalId ID della proposta da cancellare
-     */
     function cancelProposal(uint256 proposalId) external onlyRole(DEFAULT_ADMIN_ROLE) {
         Proposal storage proposal = proposals[proposalId];
         require(proposal.id != 0, "ProposalManager: proposal does not exist");
@@ -308,26 +272,20 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         emit ProposalStateChanged(proposalId, ProposalState.Cancelled);
     }
     
-    // Funzioni di lettura
+    // Reading functions
     
-    /**
-     * @dev Restituisce lo stato di una proposta
-     */
     function getProposalState(uint256 proposalId) external view returns (ProposalState) {
         require(proposals[proposalId].id != 0, "ProposalManager: proposal does not exist");
         return proposals[proposalId].state;
     }
     
-    /**
-     * @dev Restituisce i dettagli base di una proposta
-     */
     function getProposal(uint256 proposalId) external view returns (
-        uint256 id,
         address proposer,
         string memory title,
         string memory description,
         uint256 startTime,
         uint256 endTime,
+        bool executed,
         VotingStrategy strategy,
         ProposalState state
     ) {
@@ -335,20 +293,17 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         require(proposal.id != 0, "ProposalManager: proposal does not exist");
         
         return (
-            proposal.id,
             proposal.proposer,
             proposal.title,
             proposal.description,
             proposal.startTime,
             proposal.endTime,
+            proposal.state == ProposalState.Executed,
             proposal.strategy,
             proposal.state
         );
     }
     
-    /**
-     * @dev Restituisce i risultati di voto di una proposta
-     */
     function getProposalVotes(uint256 proposalId) external view returns (
         uint256 forVotes,
         uint256 againstVotes,
@@ -368,31 +323,19 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         );
     }
     
-    /**
-     * @dev Verifica se un utente ha già votato
-     */
     function hasVoted(uint256 proposalId, address voter) external view returns (bool) {
         return proposals[proposalId].hasVoted[voter];
     }
     
-    /**
-     * @dev Restituisce il voto di un utente
-     */
-    function getVote(uint256 proposalId, address voter) external view returns (VoteChoice) {
+    function getVotes(uint256 proposalId, address voter) external view returns (VoteChoice) {
         require(proposals[proposalId].hasVoted[voter], "ProposalManager: voter has not voted");
         return proposals[proposalId].votes[voter];
     }
     
-    /**
-     * @dev Restituisce il numero di azioni di una proposta
-     */
     function getProposalActionsCount(uint256 proposalId) external view returns (uint256) {
         return proposals[proposalId].actions.length;
     }
     
-    /**
-     * @dev Restituisce un'azione specifica di una proposta
-     */
     function getProposalAction(uint256 proposalId, uint256 actionIndex) external view returns (
         address target,
         uint256 value,
@@ -405,16 +348,10 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
         return (action.target, action.value, action.data, action.description);
     }
     
-    /**
-     * @dev Restituisce il numero totale di proposte
-     */
     function getProposalCount() external view returns (uint256) {
-        return _proposalIds.current();
+        return _proposalIdCounter;
     }
     
-    /**
-     * @dev Restituisce una lista di ID delle proposte
-     */
     function getProposalsList() external view returns (uint256[] memory) {
         return proposalsList;
     }

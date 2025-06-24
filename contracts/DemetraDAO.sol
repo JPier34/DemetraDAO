@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.28;
 
 import "./DemetraToken.sol";
 import "./ProposalManager.sol";
@@ -7,34 +7,30 @@ import "./VotingStrategies.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title DemetraDAO
- * @dev Contratto principale della DAO Demetra per calzature sostenibili
- * Orchestratore di tutti i componenti del sistema di governance
+ * @dev DAO contract for the handling of proposals, voting, and token management.
  */
 contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
-    using SafeERC20 for IERC20;
     
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
     bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
     
-    // Contratti collegati
+    // Contracts related
     DemetraToken public immutable demetraToken;
     ProposalManager public immutable proposalManager;
     VotingStrategies public immutable votingStrategies;
     
-    // Configurazione vendita token
+    // Token sale config
     bool public tokenSaleActive;
-    uint256 public tokenPrice; // Prezzo in wei per token
-    uint256 public constant MIN_PURCHASE = 1 ether; // Minimo 1 token
-    uint256 public constant MAX_PURCHASE = 10000 ether; // Massimo 10,000 token per transazione
-    uint256 public maxTotalSupply; // Supply massima dei token
+    uint256 public tokenPrice;
+    uint256 public constant MIN_PURCHASE = 1 ether;
+    uint256 public constant MAX_PURCHASE = 10000 ether;
+    uint256 public maxTotalSupply;
     
-    // Membri della DAO
+    // Members
     struct Member {
         bool isActive;
         uint256 joinedAt;
@@ -47,33 +43,25 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     address[] public membersList;
     uint256 public totalMembers;
     
-    // Treasury della DAO
+    // Treasury
     uint256 public treasuryBalance;
-    mapping(address => uint256) public tokenBalances; // Balance di altri token ERC20
     
-    // Statistiche
+    // Stats
     uint256 public totalProposalsCreated;
     uint256 public totalVotesCast;
     uint256 public totalFundsRaised;
     
-    // Eventi
+    // Essential events
     event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
     event MemberJoined(address indexed member, uint256 tokensOwned);
-    event TokenSaleStatusChanged(bool active);
     event ProposalSubmitted(uint256 indexed proposalId, address indexed proposer);
+    event VoteRecorded(uint256 indexed proposalId, address indexed voter);
+    event TokenSaleStatusChanged(bool active);
     event TreasuryDeposit(address indexed from, uint256 amount);
     event TreasuryWithdrawal(address indexed to, uint256 amount, string reason);
     event EmergencyPause(address indexed admin);
     event EmergencyUnpause(address indexed admin);
     
-    /**
-     * @dev Costruttore della DAO
-     * @param tokenName Nome del token di governance
-     * @param tokenSymbol Simbolo del token
-     * @param _tokenPrice Prezzo iniziale del token in wei
-     * @param _maxTotalSupply Supply massima dei token
-     * @param admin Indirizzo dell'amministratore iniziale
-     */
     constructor(
         string memory tokenName,
         string memory tokenSymbol,
@@ -85,7 +73,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         require(_maxTotalSupply > 0, "DemetraDAO: max supply must be positive");
         require(admin != address(0), "DemetraDAO: admin cannot be zero address");
         
-        // Deploy dei contratti collegati
+        // Related contracts deploy 
         demetraToken = new DemetraToken(tokenName, tokenSymbol, address(this));
         proposalManager = new ProposalManager(address(this));
         votingStrategies = new VotingStrategies(
@@ -94,31 +82,36 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
             address(this)
         );
         
-        // Configurazione iniziale
+        // Config
         tokenPrice = _tokenPrice;
         maxTotalSupply = _maxTotalSupply;
         tokenSaleActive = true;
         
-        // Setup ruoli
+        // Setup roles
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(ADMIN_ROLE, admin);
         _grantRole(TREASURER_ROLE, admin);
         _grantRole(PROPOSER_ROLE, admin);
         
-        // Aggiungi admin come primo membro
+        // Grant DAO_ROLE to VotingStrategies
+        bytes32 DAO_ROLE = keccak256("DAO_ROLE");
+        proposalManager.grantRole(DAO_ROLE, address(votingStrategies));
+        
+        // Adds admin as first member
         _addMember(admin, 0);
     }
     
     /**
-     * @dev Permette agli utenti di acquistare token della DAO
+     * @dev  Purchasing token/s
      */
     function purchaseTokens() external payable nonReentrant whenNotPaused {
         require(tokenSaleActive, "DemetraDAO: token sale not active");
-        require(msg.value >= MIN_PURCHASE * tokenPrice, "DemetraDAO: purchase below minimum");
-        require(msg.value <= MAX_PURCHASE * tokenPrice, "DemetraDAO: purchase above maximum");
         
-        uint256 tokensToMint = msg.value / tokenPrice;
-        require(tokensToMint > 0, "DemetraDAO: insufficient payment for tokens");
+        uint256 tokensToMint = (msg.value * 1 ether) / tokenPrice;
+        require(tokensToMint >= MIN_PURCHASE, "DemetraDAO: purchase below minimum");
+        require(tokensToMint <= MAX_PURCHASE, "DemetraDAO: purchase above maximum");
+        require(tokensToMint > 0, "DemetraDAO: insufficient payment");
+        require(msg.value % tokenPrice == 0, "DemetraDAO: send exact amount");
         
         uint256 newTotalSupply = demetraToken.totalSupply() + tokensToMint;
         require(newTotalSupply <= maxTotalSupply, "DemetraDAO: would exceed max supply");
@@ -126,14 +119,14 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         // Mint token
         demetraToken.mint(msg.sender, tokensToMint);
         
-        // Aggiungi come membro se non lo è già
+        // Membership handling
         if (!members[msg.sender].isActive) {
             _addMember(msg.sender, tokensToMint);
         } else {
             members[msg.sender].tokensOwned += tokensToMint;
         }
         
-        // Aggiorna treasury
+        // Actualize treasury
         treasuryBalance += msg.value;
         totalFundsRaised += msg.value;
         
@@ -141,30 +134,7 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Disabilita la vendita di token (solo admin)
-     */
-    function disableTokenSale() external onlyRole(ADMIN_ROLE) {
-        require(tokenSaleActive, "DemetraDAO: token sale already disabled");
-        tokenSaleActive = false;
-        emit TokenSaleStatusChanged(false);
-    }
-    
-    /**
-     * @dev Riattiva la vendita di token (solo admin)
-     */
-    function enableTokenSale() external onlyRole(ADMIN_ROLE) {
-        require(!tokenSaleActive, "DemetraDAO: token sale already active");
-        tokenSaleActive = true;
-        emit TokenSaleStatusChanged(true);
-    }
-    
-    /**
-     * @dev Crea una nuova proposta
-     * @param title Titolo della proposta
-     * @param description Descrizione dettagliata
-     * @param strategy Strategia di voto da utilizzare
-     * @param category Categoria per democrazia liquida
-     * @param actions Array di azioni da eseguire (opzionale)
+     * @dev Proposal creation
      */
     function createProposal(
         string memory title,
@@ -176,14 +146,14 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         require(members[msg.sender].isActive, "DemetraDAO: only members can create proposals");
         require(demetraToken.balanceOf(msg.sender) >= 100 ether, "DemetraDAO: insufficient tokens to propose");
         
-        // Ottieni parametri suggeriti per la strategia
+        // Get parameters
         (uint256 quorum, uint256 threshold, uint256 votingPeriod) = 
             votingStrategies.getSuggestedParameters(strategy);
         
-        // Crea snapshot per la votazione
+        // Create snapshot
         uint256 snapshotId = demetraToken.snapshot();
         
-        // Crea la proposta
+        // Create proposal
         uint256 proposalId = proposalManager.createProposal(
             msg.sender,
             title,
@@ -196,24 +166,21 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
             snapshotId
         );
         
-        // Categorizza la proposta se è per democrazia liquida
+        // Categorize if necessary
         if (strategy == ProposalManager.VotingStrategy.LIQUID) {
             votingStrategies.categorizeProposal(proposalId, category);
         }
         
-        // Aggiorna statistiche
+        // Actualize stats
         members[msg.sender].proposalsCreated++;
         totalProposalsCreated++;
         
         emit ProposalSubmitted(proposalId, msg.sender);
-        
         return proposalId;
     }
     
     /**
-     * @dev Vota per una proposta
-     * @param proposalId ID della proposta
-     * @param choice Scelta del voto
+     * @dev Voting
      */
     function vote(
         uint256 proposalId,
@@ -222,17 +189,18 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         require(members[msg.sender].isActive, "DemetraDAO: only members can vote");
         require(!proposalManager.hasVoted(proposalId, msg.sender), "DemetraDAO: already voted");
         
-        // Delega il voto al contratto VotingStrategies
-        votingStrategies.vote(proposalId, choice);
+        // Delegate to VotingStrategies
+        votingStrategies.vote(proposalId, msg.sender, choice);
         
-        // Aggiorna statistiche
+        // Actualize stats
         members[msg.sender].votesParticipated++;
         totalVotesCast++;
+        
+        emit VoteRecorded(proposalId, msg.sender);
     }
     
     /**
-     * @dev Finalizza una proposta
-     * @param proposalId ID della proposta da finalizzare
+     * @dev Finalize proposal
      */
     function finalizeProposal(uint256 proposalId) external nonReentrant {
         uint256 totalSupply = demetraToken.totalSupply();
@@ -240,29 +208,29 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Esegue una proposta approvata
-     * @param proposalId ID della proposta da eseguire
+     * @dev Check if a voter can vote on a proposal
      */
-    function executeProposal(uint256 proposalId) external onlyRole(ADMIN_ROLE) nonReentrant {
-        bool success = proposalManager.executeProposal(proposalId);
-        require(success, "DemetraDAO: proposal execution failed");
+    function canVote(address voter, uint256 proposalId) external view returns (bool, string memory) {
+        if (!members[voter].isActive) {
+            return (false, "Not a member");
+        }
+        if (proposalManager.hasVoted(proposalId, voter)) {
+            return (false, "Already voted");
+        }
+        if (demetraToken.getVotes(voter) == 0) {
+            return (false, "No voting power");
+        }
+        return (true, "Can vote");
     }
     
-    /**
-     * @dev Deposita ETH nel treasury
-     */
+    // Treasury simplified
+    
     function depositToTreasury() external payable {
         require(msg.value > 0, "DemetraDAO: deposit must be positive");
         treasuryBalance += msg.value;
         emit TreasuryDeposit(msg.sender, msg.value);
     }
     
-    /**
-     * @dev Preleva dal treasury (solo treasurer)
-     * @param to Destinatario del prelievo
-     * @param amount Importo da prelevare
-     * @param reason Motivazione del prelievo
-     */
     function withdrawFromTreasury(
         address payable to,
         uint256 amount,
@@ -279,82 +247,12 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         emit TreasuryWithdrawal(to, amount, reason);
     }
     
-    /**
-     * @dev Deposita token ERC20 nel treasury
-     * @param token Indirizzo del token
-     * @param amount Quantità da depositare
-     */
-    function depositTokenToTreasury(
-        address token,
-        uint256 amount
-    ) external nonReentrant {
-        require(token != address(0), "DemetraDAO: invalid token address");
-        require(amount > 0, "DemetraDAO: deposit amount must be positive");
-        
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        tokenBalances[token] += amount;
-    }
+    // Reading functions
     
-    /**
-     * @dev Preleva token ERC20 dal treasury (solo treasurer)
-     * @param token Indirizzo del token
-     * @param to Destinatario
-     * @param amount Quantità da prelevare
-     * @param reason Motivazione
-     */
-    function withdrawTokenFromTreasury(
-        address token,
-        address to,
-        uint256 amount,
-        string memory reason
-    ) external onlyRole(TREASURER_ROLE) nonReentrant {
-        require(token != address(0), "DemetraDAO: invalid token address");
-        require(to != address(0), "DemetraDAO: cannot withdraw to zero address");
-        require(amount > 0, "DemetraDAO: withdrawal amount must be positive");
-        require(amount <= tokenBalances[token], "DemetraDAO: insufficient token balance");
-        require(bytes(reason).length > 0, "DemetraDAO: reason required");
-        
-        tokenBalances[token] -= amount;
-        IERC20(token).safeTransfer(to, amount);
-    }
-    
-    /**
-     * @dev Pausa di emergenza (solo admin)
-     */
-    function emergencyPause() external onlyRole(ADMIN_ROLE) {
-        _pause();
-        emit EmergencyPause(msg.sender);
-    }
-    
-    /**
-     * @dev Rimuove pausa di emergenza (solo admin)
-     */
-    function emergencyUnpause() external onlyRole(ADMIN_ROLE) {
-        _unpause();
-        emit EmergencyUnpause(msg.sender);
-    }
-    
-    /**
-     * @dev Aggiorna il prezzo del token (solo admin)
-     * @param newPrice Nuovo prezzo in wei
-     */
-    function updateTokenPrice(uint256 newPrice) external onlyRole(ADMIN_ROLE) {
-        require(newPrice > 0, "DemetraDAO: price must be positive");
-        tokenPrice = newPrice;
-    }
-    
-    // Funzioni di lettura
-    
-    /**
-     * @dev Verifica se un indirizzo è membro attivo
-     */
     function isMember(address account) external view returns (bool) {
         return members[account].isActive;
     }
     
-    /**
-     * @dev Ottieni informazioni su un membro
-     */
     function getMemberInfo(address member) external view returns (
         bool isActive,
         uint256 joinedAt,
@@ -372,9 +270,6 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         );
     }
     
-    /**
-     * @dev Ottieni statistiche generali della DAO
-     */
     function getDAOStats() external view returns (
         uint256 _totalMembers,
         uint256 _totalProposalsCreated,
@@ -395,19 +290,39 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
         );
     }
     
-    /**
-     * @dev Calcola il costo per acquistare una quantità di token
-     */
     function calculateTokenCost(uint256 tokenAmount) external view returns (uint256) {
-        return tokenAmount * tokenPrice;
+        return (tokenAmount * tokenPrice) / 1 ether; //always checks types for tests
     }
-
-    /**
-     * @dev Aggiunge un nuovo membro alla DAO
-     * @param account Indirizzo del nuovo membro
-     * @param tokensOwned Quantità di token posseduti dal nuovo membro
-     */
-
+    
+    // Admin functions
+    
+    function disableTokenSale() external onlyRole(ADMIN_ROLE) {
+        tokenSaleActive = false;
+        emit TokenSaleStatusChanged(false);
+    }
+    
+    function enableTokenSale() external onlyRole(ADMIN_ROLE) {
+        tokenSaleActive = true;
+        emit TokenSaleStatusChanged(true);
+    }
+    
+    function updateTokenPrice(uint256 newPrice) external onlyRole(ADMIN_ROLE) {
+        require(newPrice > 0, "DemetraDAO: price must be positive");
+        tokenPrice = newPrice;
+    }
+    
+    function emergencyPause() external onlyRole(ADMIN_ROLE) {
+        _pause();
+        emit EmergencyPause(msg.sender);
+    }
+    
+    function emergencyUnpause() external onlyRole(ADMIN_ROLE) {
+        _unpause();
+        emit EmergencyUnpause(msg.sender);
+    }
+    
+    // Internal functions
+    
     function _addMember(address account, uint256 tokensOwned) internal {
         require(account != address(0), "DemetraDAO: invalid address");
         require(!members[account].isActive, "DemetraDAO: already a member");
@@ -425,19 +340,9 @@ contract DemetraDAO is AccessControl, ReentrancyGuard, Pausable {
 
         emit MemberJoined(account, tokensOwned);
     }
-
-    /**
-     * @dev Fallback function per ricevere ETH
-     */
+    
+    // Fallback to get ETH
     receive() external payable {
-        treasuryBalance += msg.value;
-        emit TreasuryDeposit(msg.sender, msg.value);
-    }
-
-    /**
-     * @dev Fallback function in caso venga chiamata una funzione non esistente
-     */
-    fallback() external payable {
         treasuryBalance += msg.value;
         emit TreasuryDeposit(msg.sender, msg.value);
     }
