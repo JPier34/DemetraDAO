@@ -5,11 +5,12 @@ import "./DemetraToken.sol";
 import "./ProposalManager.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "hardhat/console.sol";
 
 /**
  * @title VotingStrategies
- * @dev Implementa le strategie di voto miste per la DAO Demetra
- * Combina democrazia diretta, liquida e consenso per diversi tipi di decisioni
+ * @dev CENTRALIZZA tutta la logica di voto per la DAO Demetra
+ * Responsabile di: calcolo voting power, deleghe, esecuzione voti
  */
 contract VotingStrategies is AccessControl, ReentrancyGuard {
     bytes32 public constant DAO_ROLE = keccak256("DAO_ROLE");
@@ -17,7 +18,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     DemetraToken public immutable demetraToken;
     ProposalManager public immutable proposalManager;
     
-    // Struttura per tracciare deleghe per categoria
+    // Struttura per deleghe per categoria
     struct CategoryDelegation {
         address delegate;
         bool active;
@@ -26,32 +27,33 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     
     // Categorie di proposte per democrazia liquida
     enum ProposalCategory {
-        STRATEGIC,      // Decisioni strategiche (partnership, nuove collezioni)
-        OPERATIONAL,    // Decisioni operative (marketing, processi)
-        TECHNICAL,      // Decisioni tecniche (aggiornamenti, parametri)
-        GOVERNANCE      // Modifiche alla governance stessa
+        GENERAL,        // 0 - Categoria generale (default)
+        STRATEGIC,      // 1 - Decisioni strategiche
+        OPERATIONAL,    // 2 - Decisioni operative
+        TECHNICAL,      // 3 - Decisioni tecniche
+        GOVERNANCE      // 4 - Modifiche alla governance
     }
     
-    // Mapping per deleghe per categoria: delegator => category => delegation info
+    // Mapping per deleghe per categoria
     mapping(address => mapping(ProposalCategory => CategoryDelegation)) public categoryDelegations;
     
-    // Mapping per tracciare i voti delegati per categoria
+    // Mapping per voti delegati per categoria
     mapping(address => mapping(ProposalCategory => uint256)) public categoryDelegatedVotes;
     
-    // Mapping per tracciare le proposte e le loro categorie
+    // Mapping per categorie delle proposte
     mapping(uint256 => ProposalCategory) public proposalCategories;
     
-    // Parametri per le diverse strategie
+    // Parametri per le strategie
     struct StrategyParameters {
-        uint256 directQuorum;           // Quorum per democrazia diretta
-        uint256 directThreshold;        // Soglia approvazione democrazia diretta
-        uint256 liquidQuorum;           // Quorum per democrazia liquida
-        uint256 liquidThreshold;        // Soglia approvazione democrazia liquida
-        uint256 consensusQuorum;        // Quorum per consenso
-        uint256 consensusThreshold;     // Soglia approvazione consenso (supermajority)
-        uint256 votingPeriodDirect;     // Periodo votazione democrazia diretta
-        uint256 votingPeriodLiquid;     // Periodo votazione democrazia liquida
-        uint256 votingPeriodConsensus;  // Periodo votazione consenso (più lungo)
+        uint256 directQuorum;
+        uint256 directThreshold;
+        uint256 liquidQuorum;
+        uint256 liquidThreshold;
+        uint256 consensusQuorum;
+        uint256 consensusThreshold;
+        uint256 votingPeriodDirect;
+        uint256 votingPeriodLiquid;
+        uint256 votingPeriodConsensus;
     }
     
     StrategyParameters public strategyParams;
@@ -82,12 +84,6 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         ProposalCategory indexed category
     );
     
-    /**
-     * @dev Costruttore
-     * @param _demetraToken Indirizzo del token di governance
-     * @param _proposalManager Indirizzo del gestore proposte
-     * @param admin Indirizzo dell'amministratore
-     */
     constructor(
         address _demetraToken,
         address _proposalManager,
@@ -103,7 +99,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(DAO_ROLE, admin);
         
-        // Inizializza parametri predefiniti
+        // Parametri di default
         strategyParams = StrategyParameters({
             directQuorum: 3000,        // 30%
             directThreshold: 6000,     // 60%
@@ -118,9 +114,72 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev Delega voti per una specifica categoria
-     * @param category Categoria della proposta
-     * @param delegatee Indirizzo a cui delegare
+     * @dev FUNZIONE PRINCIPALE DI VOTO - chiamata da DemetraDAO
+     * Gestisce tutta la logica di voto e calcola il voting power corretto
+     */
+    function vote(
+        uint256 proposalId,
+        address voter,
+        ProposalManager.VoteChoice choice
+    ) external onlyRole(DAO_ROLE) nonReentrant {
+        console.log("VotingStrategies.vote called for proposal %s by voter %s", proposalId, voter);
+        
+        // Verifica che il votante abbia voting power base
+        uint256 baseVotingPower = demetraToken.getVotes(voter);
+        console.log("Base voting power for voter %s: %s", voter, baseVotingPower);
+        require(baseVotingPower > 0, "VotingStrategies: no voting power");
+        
+        // Ottieni informazioni sulla proposta
+        (, , , , , , ProposalManager.VotingStrategy strategy, ) = proposalManager.getProposal(proposalId);
+        console.log("Proposal %s uses strategy: %s", proposalId, uint256(strategy));
+        
+        // Calcola il voting power effettivo basato sulla strategia
+        uint256 effectiveVotingPower = _calculateEffectiveVotingPower(voter, proposalId, strategy);
+        console.log("Effective voting power calculated: %s", effectiveVotingPower);
+        
+        // Esegui il voto tramite ProposalManager
+        proposalManager.castVote(proposalId, voter, choice, effectiveVotingPower);
+        
+        emit VoteCastWithStrategy(proposalId, voter, choice, effectiveVotingPower, strategy);
+    }
+    
+    /**
+     * @dev Calcola il voting power effettivo per una strategia specifica
+     */
+    function _calculateEffectiveVotingPower(
+        address voter,
+        uint256 proposalId,
+        ProposalManager.VotingStrategy strategy
+    ) internal view returns (uint256) {
+        uint256 baseVotingPower = demetraToken.getVotes(voter);
+        console.log("Calculating effective voting power for voter %s with base power %s", voter, baseVotingPower);
+        
+        if (strategy == ProposalManager.VotingStrategy.DIRECT) {
+            console.log("Using DIRECT strategy - returning base power: %s", baseVotingPower);
+            return baseVotingPower;
+            
+        } else if (strategy == ProposalManager.VotingStrategy.LIQUID) {
+            ProposalCategory category = proposalCategories[proposalId];
+            uint256 categoryDelegatedPower = categoryDelegatedVotes[voter][category];
+            uint256 totalPower = baseVotingPower + categoryDelegatedPower;
+            console.log("Using LIQUID strategy - base: %s, delegated: %s, total: %s", 
+                       baseVotingPower, categoryDelegatedPower, totalPower);
+            return totalPower;
+            
+        } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
+            // Nel consenso, ogni membro con token ha peso 1
+            uint256 consensusPower = baseVotingPower > 0 ? 1 : 0;
+            console.log("Using CONSENSUS strategy - returning: %s", consensusPower);
+            return consensusPower;
+            
+        } else {
+            console.log("Unknown strategy, defaulting to base power: %s", baseVotingPower);
+            return baseVotingPower;
+        }
+    }
+    
+    /**
+     * @dev Delega voti per una categoria specifica
      */
     function delegateForCategory(
         ProposalCategory category,
@@ -131,19 +190,19 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         
         address currentDelegate = categoryDelegations[msg.sender][category].delegate;
         
-        // Rimuove la delega precedente se esiste
+        // Rimuovi delega precedente se esiste
         if (currentDelegate != address(0) && categoryDelegations[msg.sender][category].active) {
             _removeCategoryDelegation(msg.sender, currentDelegate, category);
         }
         
-        // Crea la nuova delega
+        // Crea nuova delega
         categoryDelegations[msg.sender][category] = CategoryDelegation({
             delegate: delegatee,
             active: true,
             fromBlock: block.number
         });
         
-        // Usa getVotes() per ottenere il voting power corrente (include deleghe ERC20Votes)
+        // Aggiorna i voti delegati
         uint256 delegatorVotingPower = demetraToken.getVotes(msg.sender);
         if (delegatorVotingPower > 0) {
             categoryDelegatedVotes[delegatee][category] += delegatorVotingPower;
@@ -153,12 +212,12 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-     * @dev Revoca delega per una categoria specifica
-     * @param category Categoria per cui revocare la delega
+     * @dev Revoca delega per una categoria
      */
     function revokeCategoryDelegation(ProposalCategory category) external {
         address currentDelegate = categoryDelegations[msg.sender][category].delegate;
         require(currentDelegate != address(0), "VotingStrategies: no active delegation for category");
+        require(categoryDelegations[msg.sender][category].active, "VotingStrategies: delegation not active");
         
         _removeCategoryDelegation(msg.sender, currentDelegate, category);
         
@@ -167,8 +226,6 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     
     /**
      * @dev Categorizza una proposta (solo DAO)
-     * @param proposalId ID della proposta
-     * @param category Categoria assegnata
      */
     function categorizeProposal(
         uint256 proposalId,
@@ -176,63 +233,6 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     ) external onlyRole(DAO_ROLE) {
         proposalCategories[proposalId] = category;
         emit ProposalCategorized(proposalId, category);
-    }
-    
-    /**
-     * @dev Vota per una proposta utilizzando la strategia appropriata
-     * @param proposalId ID della proposta
-     * @param choice Scelta del voto
-     */
-    function vote(
-        uint256 proposalId,
-        ProposalManager.VoteChoice choice
-    ) external nonReentrant {
-        // Usa getVotes() per ottenere il voting power base
-        uint256 baseVotingPower = demetraToken.getVotes(msg.sender);
-        require(baseVotingPower > 0, "VotingStrategies: no voting power");
-
-        (,,,,,, ProposalManager.VotingStrategy strategy,) = proposalManager.getProposal(proposalId);
-        
-        uint256 effectiveVotingPower = _calculateVotingPower(msg.sender, proposalId, strategy);
-
-        proposalManager.castVote(proposalId, msg.sender, choice, effectiveVotingPower);
-
-        emit VoteCastWithStrategy(proposalId, msg.sender, choice, effectiveVotingPower, strategy);
-    }
-    
-    /**
-     * @dev Calcola il potere di voto per un utente su una proposta specifica
-     * @param voter Indirizzo del votante
-     * @param proposalId ID della proposta
-     * @param strategy Strategia di voto della proposta
-     * @return Il potere di voto totale
-     */
-    function _calculateVotingPower(
-        address voter,
-        uint256 proposalId,
-        ProposalManager.VotingStrategy strategy
-    ) internal view returns (uint256) {
-        // Usa getVotes() che include il voting power base + deleghe ERC20Votes
-        uint256 baseVotingPower = demetraToken.getVotes(voter);
-        
-        if (strategy == ProposalManager.VotingStrategy.DIRECT) {
-            // Democrazia diretta: solo voting power da ERC20Votes
-            return baseVotingPower;
-            
-        } else if (strategy == ProposalManager.VotingStrategy.LIQUID) {
-            // Democrazia liquida: voting power base + deleghe per categoria
-            ProposalCategory category = proposalCategories[proposalId];
-            uint256 categoryDelegatedPower = categoryDelegatedVotes[voter][category];
-            return baseVotingPower + categoryDelegatedPower;
-            
-        } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
-            // Consenso: tutti hanno peso uguale se possiedono token
-            return baseVotingPower > 0 ? 1 : 0;
-            
-        } else {
-            // Default: democrazia diretta
-            return baseVotingPower;
-        }
     }
     
     /**
@@ -245,19 +245,20 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     ) internal {
         uint256 delegatorVotingPower = demetraToken.getVotes(delegator);
         
-        if (delegatorVotingPower > 0) {
+        // Rimuovi i voti delegati
+        if (delegatorVotingPower > 0 && categoryDelegatedVotes[delegatee][category] >= delegatorVotingPower) {
             categoryDelegatedVotes[delegatee][category] -= delegatorVotingPower;
         }
         
+        // Disattiva la delega
         categoryDelegations[delegator][category].active = false;
+        categoryDelegations[delegator][category].delegate = address(0);
     }
     
+    // === FUNZIONI DI LETTURA ===
+    
     /**
-     * @dev Ottieni il potere di voto attuale per una strategia specifica
-     * @param voter Indirizzo del votante
-     * @param strategy Strategia di voto
-     * @param category Categoria (per democrazia liquida)
-     * @return Il potere di voto
+     * @dev Ottieni il voting power attuale per una strategia specifica
      */
     function getCurrentVotingPower(
         address voter,
@@ -278,12 +279,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
     }
     
     /**
-    * @dev Get the voting power at a specific block
-    * @param voter Address of the voter
-    * @param blockNumber Block number
-    * @param strategy Voting strategy
-    * @param // category Category (for liquid democracy)
-    * @return The historical voting power
+     * @dev Ottieni il voting power storico
      */
     function getPastVotingPower(
         address voter,
@@ -296,8 +292,8 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         if (strategy == ProposalManager.VotingStrategy.DIRECT) {
             return basePastVotingPower;
         } else if (strategy == ProposalManager.VotingStrategy.LIQUID) {
-            // Per la democrazia liquida, dovremmo implementare checkpoint storici per le deleghe per categoria
-            // Per ora restituiamo solo il base voting power
+            // Per ora restituiamo solo base power - in futuro si potrebbe implementare
+            // un sistema di checkpoint per le deleghe storiche
             return basePastVotingPower;
         } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
             return basePastVotingPower > 0 ? 1 : 0;
@@ -306,29 +302,16 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         }
     }
     
-    /**
-     * @dev Verifica se un utente ha delegato per una categoria specifica
-     */
-    function hasCategoryDelegation(
-        address /*delegator*/,
-        ProposalCategory /*category*/
-    ) external pure returns (bool) {
-        return false;
-    }
-    
-    /**
-     * @dev Ottieni il delegato per una categoria specifica
-     */
     function getCategoryDelegate(
         address delegator,
         ProposalCategory category
     ) external view returns (address) {
-        return categoryDelegations[delegator][category].delegate;
+        if (categoryDelegations[delegator][category].active) {
+            return categoryDelegations[delegator][category].delegate;
+        }
+        return address(0);
     }
     
-    /**
-     * @dev Ottieni i voti delegati per una categoria
-     */
     function getCategoryDelegatedVotes(
         address delegate,
         ProposalCategory category
@@ -336,16 +319,42 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         return categoryDelegatedVotes[delegate][category];
     }
     
-    /**
-     * @dev Ottieni la categoria di una proposta
-     */
     function getProposalCategory(uint256 proposalId) external view returns (ProposalCategory) {
         return proposalCategories[proposalId];
     }
     
+    function hasCategoryDelegation(
+        address delegator,
+        ProposalCategory category
+    ) external view returns (bool) {
+        return categoryDelegations[delegator][category].active;
+    }
+    
     /**
-     * @dev Aggiorna i parametri della strategia (solo admin)
+     * @dev Suggerisci parametri ottimali per una strategia
      */
+    function getSuggestedParameters(ProposalManager.VotingStrategy strategy) 
+        external 
+        view 
+        returns (uint256 quorum, uint256 threshold, uint256 votingPeriod) 
+    {
+        if (strategy == ProposalManager.VotingStrategy.DIRECT) {
+            return (strategyParams.directQuorum, strategyParams.directThreshold, strategyParams.votingPeriodDirect);
+        } else if (strategy == ProposalManager.VotingStrategy.LIQUID) {
+            return (strategyParams.liquidQuorum, strategyParams.liquidThreshold, strategyParams.votingPeriodLiquid);
+        } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
+            return (strategyParams.consensusQuorum, strategyParams.consensusThreshold, strategyParams.votingPeriodConsensus);
+        } else {
+            return (strategyParams.directQuorum, strategyParams.directThreshold, strategyParams.votingPeriodDirect);
+        }
+    }
+    
+    function getStrategyParameters() external view returns (StrategyParameters memory) {
+        return strategyParams;
+    }
+    
+    // === FUNZIONI ADMIN ===
+    
     function updateStrategyParameters(
         uint256 directQuorum,
         uint256 directThreshold,
@@ -375,34 +384,5 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
             votingPeriodLiquid: votingPeriodLiquid,
             votingPeriodConsensus: votingPeriodConsensus
         });
-    }
-    
-    /**
-     * @dev Ottieni i parametri attuali delle strategie
-     */
-    function getStrategyParameters() external view returns (StrategyParameters memory) {
-        return strategyParams;
-    }
-    
-    /**
-     * @dev Suggerisci parametri ottimali per una proposta basati sulla strategia
-     * @param strategy Strategia di voto
-     * @return quorum e threshold suggeriti
-     */
-    function getSuggestedParameters(ProposalManager.VotingStrategy strategy) 
-        external 
-        view 
-        returns (uint256 quorum, uint256 threshold, uint256 votingPeriod) 
-    {
-        if (strategy == ProposalManager.VotingStrategy.DIRECT) {
-            return (strategyParams.directQuorum, strategyParams.directThreshold, strategyParams.votingPeriodDirect);
-        } else if (strategy == ProposalManager.VotingStrategy.LIQUID) {
-            return (strategyParams.liquidQuorum, strategyParams.liquidThreshold, strategyParams.votingPeriodLiquid);
-        } else if (strategy == ProposalManager.VotingStrategy.CONSENSUS) {
-            return (strategyParams.consensusQuorum, strategyParams.consensusThreshold, strategyParams.votingPeriodConsensus);
-        } else {
-            // Default a democrazia diretta
-            return (strategyParams.directQuorum, strategyParams.directThreshold, strategyParams.votingPeriodDirect);
-        }
     }
 }
