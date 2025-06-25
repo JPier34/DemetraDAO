@@ -106,7 +106,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
             liquidQuorum: 2000,        // 20%
             liquidThreshold: 5000,     // 50%
             consensusQuorum: 4000,     // 40%
-            consensusThreshold: 7500,  // 75%
+            consensusThreshold: 10000,  // 100%
             votingPeriodDirect: 7 days,
             votingPeriodLiquid: 3 days,
             votingPeriodConsensus: 14 days
@@ -369,7 +369,7 @@ contract VotingStrategies is AccessControl, ReentrancyGuard {
         require(liquidQuorum <= 5000, "VotingStrategies: liquid quorum too high");
         require(liquidThreshold >= 5000 && liquidThreshold <= 10000, "VotingStrategies: invalid liquid threshold");
         require(consensusQuorum <= 5000, "VotingStrategies: consensus quorum too high");
-        require(consensusThreshold >= 6000 && consensusThreshold <= 10000, "VotingStrategies: invalid consensus threshold");
+        require(consensusThreshold == 10000, "VotingStrategies: invalid consensus threshold");
         
         strategyParams = StrategyParameters({
             directQuorum: directQuorum,

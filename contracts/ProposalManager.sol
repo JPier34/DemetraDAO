@@ -222,9 +222,9 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
             uint256 approvalNeeded = (totalVotes * proposal.approvalThreshold) / 10000;
             approved = proposal.forVotes >= approvalNeeded;
         } else if (proposal.strategy == VotingStrategy.CONSENSUS) {
-            // Consensus: supermajority required (75%+)
-            uint256 consensusNeeded = (totalVotes * 7500) / 10000; 
-            approved = proposal.forVotes >= consensusNeeded;
+            // Consensus: everybody agree (100%)
+            uint256 consensusNeeded = (totalVotes * 10000) / 10000; 
+            approved = proposal.forVotes == consensusNeeded;
         }
         
         proposal.state = approved ? ProposalState.Succeeded : ProposalState.Failed;

@@ -6,33 +6,37 @@ require("solidity-coverage");
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.28",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 1, // Riduci runs per contratti più piccoli
-        details: {
-          yul: true,
-          yulDetails: {
-            stackAllocation: true,
-            optimizerSteps: "dhfoDgvulfnTUtnIf",
+    compilers: [
+      {
+        version: "0.8.28",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+            details: {
+              yul: true,
+              yulDetails: {
+                stackAllocation: true,
+                optimizerSteps: "dhfoDgvulfnTUtnIf",
+              },
+            },
           },
+          viaIR: true,
         },
       },
-      viaIR: true, // Importante per ottimizzazione avanzata
-    },
+    ],
   },
 
   networks: {
     hardhat: {
       chainId: 31337,
       accounts: {
-        count: 20, // Più account per i test
-        accountsBalance: "100000000000000000000000", // 100,000 ETH per account
+        count: 20, // More account for testing
+        accountsBalance: "100000000000000000000000", // 100,000 ETH for each account
       },
-      gas: 30000000, // Aumentato gas limit
-      blockGasLimit: 30000000, // Aumentato block gas limit
-      allowUnlimitedContractSize: true, // IMPORTANTE: Abilita contratti grandi
+      gas: 30000000,
+      blockGasLimit: 30000000,
+      allowUnlimitedContractSize: true,
     },
     localhost: {
       url: "http://127.0.0.1:8545",
@@ -60,9 +64,9 @@ module.exports = {
   },
 
   mocha: {
-    timeout: 60000, // 60 secondi timeout per test complessi
+    timeout: 60000, // 60 seconds timeout
     reporter: "spec",
-    slow: 10000, // Test più lenti di 10s vengono marcati come slow
+    slow: 10000, // Tests slower than 10s are 'slow'
   },
 
   paths: {
@@ -72,7 +76,7 @@ module.exports = {
     artifacts: "./artifacts",
   },
 
-  // Configurazione per solidity-coverage
+  // Solidity-coverage config
   coverage: {
     enabled: true,
     skipFiles: ["test/", "mock/", "interfaces/"],
