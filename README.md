@@ -125,8 +125,6 @@ Choose from **4 Democracy Types**:
 
 #### 🎯 Direct Democracy
 - **1 token = 1 vote**
-
-- 
 - Pure proportional representation
 - Best for: General community decisions
 
@@ -149,7 +147,7 @@ Choose from **4 Democracy Types**:
 
 ```mermaid
 timeline
-    title Proposal Lifecycle
+title Proposal Lifecycle (direct democracy)
     
     Day 0     : 📝 Proposal Created
               : ✅ Community Review Begins
