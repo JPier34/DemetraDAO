@@ -1,16 +1,4 @@
-# Sample Hardhat Project
-
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.
-
-Try running some of the following tasks:
-
-````shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat ignition deploy ./ignition/modules/Lock.ts
-```# 🌾 DemetraDAO - Decentralized Governance Revolution
+# 🌾 DemetraDAO - Decentralized Governance Revolution
 
 > **Where Democracy Meets Innovation** 🗳️✨
 
@@ -42,7 +30,7 @@ Make sure you have the following installed:
 node >= 18.0.0
 npm >= 8.0.0
 git
-````
+```
 
 ### 🔧 Installation
 
