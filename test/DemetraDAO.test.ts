@@ -130,9 +130,9 @@ describe("DemetraDAO - Complete Requirements Test", function () {
       console.log("\n=== TEST 1: SHARE PURCHASE AND MEMBER CREATION ===");
 
       // Define token quantities to purchase
-      const tokens1 = ethers.parseEther("100"); // 100 tokens for addr1 (was 1000)
-      const tokens2 = ethers.parseEther("50"); // 50 tokens for addr2 (was 500)
-      const tokens3 = ethers.parseEther("30"); // 30 tokens for addr3 (was 300)
+      const tokens1 = ethers.parseEther("100"); // 100 tokens for addr1
+      const tokens2 = ethers.parseEther("50"); // 50 tokens for addr2
+      const tokens3 = ethers.parseEther("30"); // 30 tokens for addr3
 
       // Calculate costs
       const cost1 = await demetraDAO.calculateTokenCost(tokens1);
@@ -160,7 +160,7 @@ describe("DemetraDAO - Complete Requirements Test", function () {
       expect(await demetraDAO.isMember(await addr1.getAddress())).to.be.false;
       expect(await demetraDAO.isMember(await addr2.getAddress())).to.be.false;
       expect(await demetraDAO.isMember(await addr3.getAddress())).to.be.false;
-      expect(await demetraDAO.totalMembers()).to.equal(1n); // Only owner (BigInt)
+      expect(await demetraDAO.totalMembers()).to.equal(1n); // Only owner
 
       // addr1 purchases tokens
       console.log("\naddr1 purchasing tokens...");
@@ -190,7 +190,7 @@ describe("DemetraDAO - Complete Requirements Test", function () {
       expect(await demetraDAO.isMember(await addr1.getAddress())).to.be.true;
       expect(await demetraDAO.isMember(await addr2.getAddress())).to.be.true;
       expect(await demetraDAO.isMember(await addr3.getAddress())).to.be.true;
-      expect(await demetraDAO.totalMembers()).to.equal(4n); // owner + 3 new (BigInt)
+      expect(await demetraDAO.totalMembers()).to.equal(4n); // owner + 3 new
 
       // Verify tokens received
       expect(await demetraToken.balanceOf(await addr1.getAddress())).to.equal(
@@ -417,9 +417,9 @@ describe("DemetraDAO - Complete Requirements Test", function () {
         0
       );
 
-      expect(strategicPower1).to.equal(tokens1); // Use tokens1 instead of parseEther
-      expect(strategicPower2).to.equal(tokens2); // Use tokens2 instead of parseEther
-      expect(strategicPower3).to.equal(tokens3); // Use tokens3 instead of parseEther
+      expect(strategicPower1).to.equal(tokens1);
+      expect(strategicPower2).to.equal(tokens2);
+      expect(strategicPower3).to.equal(tokens3);
 
       console.log("✅ Weighted voting power correctly verified");
     });
@@ -427,7 +427,6 @@ describe("DemetraDAO - Complete Requirements Test", function () {
     it("Votes should be proportional to tokens owned", async function () {
       console.log("\nVerifying vote-token proportionality...");
 
-      // The vote/token ratio should be 1:1 for everyone
       const addr1Tokens = await demetraToken.balanceOf(
         await addr1.getAddress()
       );
@@ -440,7 +439,6 @@ describe("DemetraDAO - Complete Requirements Test", function () {
       expect(addr1Votes).to.equal(addr1Tokens);
       expect(addr2Votes).to.equal(addr2Tokens);
 
-      // Verify proportional ratio
       // addr1 has 1000 tokens, addr2 has 500 tokens => 2:1 ratio
       expect(addr1Votes / addr2Votes).to.equal(addr1Tokens / addr2Tokens);
 
@@ -1195,13 +1193,13 @@ describe("DemetraDAO - Complete Requirements Test", function () {
         ProposalCategory.GENERAL
       );
 
-      console.log(`Alice voting power: ${ethers.formatEther(power1)} votes`);
-      console.log(`Bob voting power: ${ethers.formatEther(power2)} votes`);
+      console.log(`Holly voting power: ${ethers.formatEther(power1)} votes`);
+      console.log(`Tom voting power: ${ethers.formatEther(power2)} votes`);
 
       expect(power1).to.equal(ethers.parseEther("1000"));
       expect(power2).to.equal(ethers.parseEther("800"));
 
-      // Vote: Alice (1000) + Bob (800) = 1800 FOR vs Charlie (700) AGAINST
+      // Vote: Holly (1000) + Tom (800) = 1800 FOR vs Benji (700) AGAINST
       await demetraDAO.connect(addr1).vote(proposalId, 1); // FOR
       await demetraDAO.connect(addr2).vote(proposalId, 1); // FOR
       await demetraDAO.connect(addr3).vote(proposalId, 2); // AGAINST
@@ -1213,8 +1211,8 @@ describe("DemetraDAO - Complete Requirements Test", function () {
     it("Strategy 2: LIQUID DEMOCRACY - Category delegation", async function () {
       console.log("\n=== TEST LIQUID DEMOCRACY ===");
 
-      // Charlie delegates his TECHNICAL votes to Alice (the expert)
-      console.log("Charlie delegates TECHNICAL votes to Alice...");
+      // Benji delegates his TECHNICAL votes to Holly (the expert)
+      console.log("Benji delegates TECHNICAL votes to Holly...");
       await votingStrategies
         .connect(addr3)
         .delegateForCategory(
@@ -1252,38 +1250,38 @@ describe("DemetraDAO - Complete Requirements Test", function () {
       proposalId = demetraDAO.interface.parseLog(event).args[0];
 
       // Verify voting power with delegation
-      const alicePowerLiquid = await votingStrategies.getCurrentVotingPower(
+      const HollyPowerLiquid = await votingStrategies.getCurrentVotingPower(
         await addr1.getAddress(),
         VotingStrategy.LIQUID,
         ProposalCategory.TECHNICAL
       );
-      const charlieDelegatedVotes =
+      const BenjiDelegatedVotes =
         await votingStrategies.getCategoryDelegatedVotes(
           await addr1.getAddress(),
           ProposalCategory.TECHNICAL
         );
 
       console.log(
-        `Alice base power: ${ethers.formatEther(
+        `Holly base power: ${ethers.formatEther(
           ethers.parseEther("1000")
         )} votes`
       );
       console.log(
-        `Charlie delegated to Alice: ${ethers.formatEther(
-          charlieDelegatedVotes
+        `Benji delegated to Holly: ${ethers.formatEther(
+          BenjiDelegatedVotes
         )} votes`
       );
       console.log(
-        `Alice total power: ${ethers.formatEther(alicePowerLiquid)} votes`
+        `Holly total power: ${ethers.formatEther(HollyPowerLiquid)} votes`
       );
 
-      // Alice should have 1000 (her own) + 700 (delegated from Charlie) = 1700
-      expect(alicePowerLiquid).to.equal(ethers.parseEther("1700"));
+      // Holly should have 1000 (her own) + 700 (delegated from Benji) = 1700
+      expect(HollyPowerLiquid).to.equal(ethers.parseEther("1700"));
 
       // Vote with liquid democracy
-      await demetraDAO.connect(addr1).vote(proposalId, 1); // Alice: 1700 votes FOR
-      await demetraDAO.connect(addr2).vote(proposalId, 2); // Bob: 800 votes AGAINST
-      // Charlie doesn't vote (has delegated)
+      await demetraDAO.connect(addr1).vote(proposalId, 1); // Holly: 1700 votes FOR
+      await demetraDAO.connect(addr2).vote(proposalId, 2); // Tom: 800 votes AGAINST
+      // Benji doesn't vote (has delegated)
 
       console.log("Liquid Result: 1700 FOR vs 800 AGAINST (68% approval)");
       console.log("✅ Liquid democracy: category delegation functional");
@@ -1331,9 +1329,9 @@ describe("DemetraDAO - Complete Requirements Test", function () {
         ProposalCategory.GOVERNANCE
       );
 
-      console.log(`Alice consensus power: ${consensusPower1} vote`);
-      console.log(`Bob consensus power: ${consensusPower2} vote`);
-      console.log(`Charlie consensus power: ${consensusPower3} vote`);
+      console.log(`Holly consensus power: ${consensusPower1} vote`);
+      console.log(`Tom consensus power: ${consensusPower2} vote`);
+      console.log(`Benji consensus power: ${consensusPower3} vote`);
 
       expect(consensusPower1).to.equal(1); // 1 vote regardless of tokens
       expect(consensusPower2).to.equal(1);
@@ -1452,7 +1450,7 @@ describe("DemetraDAO - Complete Requirements Test", function () {
         });
         const propId = demetraDAO.interface.parseLog(event).args[0];
 
-        // Always same vote: Alice+Bob FOR, Charlie AGAINST
+        // Always same vote: Holly+Tom FOR, Benji AGAINST
         await demetraDAO.connect(addr1).vote(propId, 1);
         await demetraDAO.connect(addr2).vote(propId, 1);
         await demetraDAO.connect(addr3).vote(propId, 2);

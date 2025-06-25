@@ -27,7 +27,7 @@ contract ProposalManager is AccessControl, ReentrancyGuard {
     }
     
     enum VotingStrategy {
-        DIRECT,         // 0 - Direct democracy (was SIMPLE_MAJORITY)
+        DIRECT,         // 0 - Direct democracy
         LIQUID,         // 1 - Liquid democracy
         REPRESENTATIVE, // 2 - Representative democracy
         CONSENSUS       // 3 - Consensus
