@@ -2,8 +2,8 @@ require("@nomicfoundation/hardhat-toolbox");
 require("@typechain/hardhat");
 require("hardhat-gas-reporter");
 require("solidity-coverage");
+require("dotenv").config();
 
-/** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
     compilers: [
@@ -12,7 +12,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 1,
             details: {
               yul: true,
               yulDetails: {
@@ -44,6 +44,38 @@ module.exports = {
       gas: 30000000,
       blockGasLimit: 30000000,
       allowUnlimitedContractSize: true,
+    },
+    baseSepolia: {
+      url: "https://sepolia.base.org",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 84532,
+      gas: 15000000, // 15M gas limit
+      gasPrice: 1000000000, // 1 gwei - molto economico
+      timeout: 120000,
+    },
+
+    // Optimism Sepolia - Alternative
+    optimismSepolia: {
+      url: "https://sepolia.optimism.io",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 11155420,
+      gas: 15000000,
+      gasPrice: 1000000000,
+    },
+
+    // Arbitrum Sepolia - Alternative
+    arbitrumSepolia: {
+      url: "https://sepolia-rollup.arbitrum.io/rpc",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 421614,
+      gas: 20000000,
+      gasPrice: 1000000000,
+    },
+  },
+
+  etherscan: {
+    apikey: {
+      sepolia: process.env.ETHERSCAN_API_KEY,
     },
   },
 

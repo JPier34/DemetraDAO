@@ -52,7 +52,8 @@
     "typechain": "^8.3.2"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^4.9.6"
+    "@openzeppelin/contracts": "^4.9.6",
+    "dotenv": "^16.5.0"
   },
   "engines": {
     "node": ">=18.0.0"
