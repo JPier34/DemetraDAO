@@ -299,11 +299,23 @@ npx hardhat test
 - **Local**: Development environment
   (Can possibly be tested out on many more)
 
-- **Here are the addresses:**
-- _DemetraToken:_ 0x2c7e59Af42DA4D9C8Fcb08413cbbf12B8f0b97a5 (already checkable on: https://sepolia.basescan.org/address/0x2c7e59Af42DA4D9C8Fcb08413cbbf12B8f0b97a5 )
-- _ProposalManager:_ 0xaf39f2A932c54B8dAaC21Ac5d877302E8c7252e9 (already checkable on: https://sepolia.basescan.org/address/0xaf39f2A932c54B8dAaC21Ac5d877302E8c7252e9 )
-- _VotingStrategies:_ 0x88a02Dbca28eE4dB12a22b1F8C02ab32Ba264827 (already checkable on: https://sepolia.basescan.org/address/0x88a02Dbca28eE4dB12a22b1F8C02ab32Ba264827 )
-- _DemetraDAO:_ 0xAEb52E6E5Ed91E1fE631629032e79BA49e044D6F (already checkable on: https://sepolia.basescan.org/address/0xAEb52E6E5Ed91E1fE631629032e79BA49e044D6F )
+## Here are the addresses (Base Sepolia Testnet):
+
+- **DemetraToken**  
+  `0x2c7e59Af42DA4D9C8Fcb08413cbbf12B8f0b97a5`  
+  [🔗 View on BaseScan](https://sepolia.basescan.org/address/0x2c7e59Af42DA4D9C8Fcb08413cbbf12B8f0b97a5)
+
+- **ProposalManager**  
+  `0xaf39f2A932c54B8dAaC21Ac5d877302E8c7252e9`  
+  [🔗 View on BaseScan](https://sepolia.basescan.org/address/0xaf39f2A932c54B8dAaC21Ac5d877302E8c7252e9)
+
+- **VotingStrategies**  
+  `0x88a02Dbca28eE4dB12a22b1F8C02ab32Ba264827`  
+  [🔗 View on BaseScan](https://sepolia.basescan.org/address/0x88a02Dbca28eE4dB12a22b1F8C02ab32Ba264827)
+
+- **DemetraDAO**  
+  `0xAEb52E6E5Ed91E1fE631629032e79BA49e044D6F`  
+  [🔗 View on BaseScan](https://sepolia.basescan.org/address/0xAEb52E6E5Ed91E1fE631629032e79BA49e044D6F)
 
 ---
 
