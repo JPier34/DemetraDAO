@@ -1,0 +1,22 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "deployer": "0x777382955f33Bb8540602E914D9b650C962EF6Cc",
+  "timestamp": "2025-06-27T07:24:15.638Z",
+  "deploymentType": "coordinator-with-existing-contracts",
+  "contracts": {
+    "coordinator": "0xAEb52E6E5Ed91E1fE631629032e79BA49e044D6F",
+    "existingToken": "0x2c7e59Af42DA4D9C8Fcb08413cbbf12B8f0b97a5",
+    "existingProposals": "0xaf39f2A932c54B8dAaC21Ac5d877302E8c7252e9",
+    "existingVoting": "0x88a02Dbca28eE4dB12a22b1F8C02ab32Ba264827"
+  },
+  "basescanLinks": {
+    "coordinator": "https://sepolia.basescan.org/address/0xAEb52E6E5Ed91E1fE631629032e79BA49e044D6F",
+    "token": "https://sepolia.basescan.org/address/0x2c7e59Af42DA4D9C8Fcb08413cbbf12B8f0b97a5",
+    "proposals": "https://sepolia.basescan.org/address/0xaf39f2A932c54B8dAaC21Ac5d877302E8c7252e9",
+    "voting": "https://sepolia.basescan.org/address/0x88a02Dbca28eE4dB12a22b1F8C02ab32Ba264827"
+  },
+  "coordinatorSize": 9229,
+  "gasUsed": "1905744",
+  "deploymentCost": "0.002858616"
+}

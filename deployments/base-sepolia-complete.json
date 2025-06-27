@@ -1,0 +1,27 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "deployer": "0x777382955f33Bb8540602E914D9b650C962EF6Cc",
+  "timestamp": "2025-06-26T17:26:57.881Z",
+  "deploymentType": "complete-four-contracts",
+  "contracts": {
+    "demetraToken": "0x2c7e59Af42DA4D9C8Fcb08413cbbf12B8f0b97a5",
+    "proposalManager": "0xaf39f2A932c54B8dAaC21Ac5d877302E8c7252e9",
+    "votingStrategies": "0x88a02Dbca28eE4dB12a22b1F8C02ab32Ba264827",
+    "demetraDAO": "FAILED - Contract too large"
+  },
+  "basescanLinks": {
+    "demetraToken": "https://sepolia.basescan.org/address/0x2c7e59Af42DA4D9C8Fcb08413cbbf12B8f0b97a5",
+    "proposalManager": "https://sepolia.basescan.org/address/0xaf39f2A932c54B8dAaC21Ac5d877302E8c7252e9",
+    "votingStrategies": "https://sepolia.basescan.org/address/0x88a02Dbca28eE4dB12a22b1F8C02ab32Ba264827"
+  },
+  "totalGasUsed": "6654229",
+  "totalCost": "0.006654229",
+  "summary": {
+    "successful": 3,
+    "total": 4,
+    "failed": [
+      "demetraDAO"
+    ]
+  }
+}
