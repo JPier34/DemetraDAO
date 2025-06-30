@@ -627,7 +627,6 @@ We welcome contributions! 🎉 DemetraDAO is open-source and community-driven.
 - 🤖 **AI Insights**: Smart proposal analytics
 - 🎮 **Gamification**: Participation rewards
 - 🏆 **Reputation System**: Weighted by contribution
-- 🔮 **Prediction Markets**: Bet on proposal outcomes
 - 🌍 **DAO of DAOs**: Inter-DAO collaboration
 
 ---
